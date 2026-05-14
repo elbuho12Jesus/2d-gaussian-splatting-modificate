@@ -93,6 +93,12 @@ class OptimizationParams(ParamGroup):
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
+        # --- Añadidos para ruido posicional adaptativo ---
+        # Exponente para el multiplicador de ruido: (1 - opacity) ** exp
+        self.noise_opacity_exponent = 10.0
+        # Factor de escala del ruido (learning-rate-style) que se aplica al desplazamiento posicional
+        self.noise_lr = 1e-3
+        # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):
