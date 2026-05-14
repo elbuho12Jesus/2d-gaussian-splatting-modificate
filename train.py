@@ -313,6 +313,12 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument(
+    '--noise_opacity_exponent',
+    type=float,
+    default=10.0,
+    help='Exponente usado en el multiplicador de ruido: (1-opacity)^exp. Reduce para menos ruido en splats opacos.'
+    )
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
