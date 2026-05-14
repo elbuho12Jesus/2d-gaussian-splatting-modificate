@@ -1,0 +1,20 @@
+services:
+  surfel_env:
+    build: .
+    image: surfel_splatting_image
+    container_name: surfel_splatting_container
+
+    volumes:
+      # Proyecto completo
+      - .:/workspace
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    stdin_open: true
+    tty: true
