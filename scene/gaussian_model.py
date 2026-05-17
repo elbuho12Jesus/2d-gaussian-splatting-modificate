@@ -165,6 +165,8 @@ class GaussianModel:
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.beta_densify_threshold = getattr(training_args, "beta_densify_threshold", 0.0)
+        self.beta_densify_mode = getattr(training_args, "beta_densify_mode", "split_wide")
 
         l = [
             {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
@@ -379,7 +381,23 @@ class GaussianModel:
         padded_grad[:grads.shape[0]] = grads.squeeze()
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
-                                              torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
+                                            torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
+        # ---------- FILTRO OPCIONAL POR BETA (insertar aquí) ----------
+        # Requiere que hayas añadido `self.beta_densify_threshold` (por ejemplo en arguments.py)
+        # y que la hayas inicializado en la instancia (p.ej. en training_setup).
+        if hasattr(self, "beta_densify_threshold") and self.beta_densify_threshold > 0.0:
+            beta_vals = self.get_beta.squeeze()
+            if beta_vals.shape[0] != n_init_points:
+                beta_vals = beta_vals[:n_init_points]
+            mode = getattr(self, "beta_densify_mode", "split_wide")
+            if mode == "split_wide":
+                selected_pts_mask = selected_pts_mask & (beta_vals <= self.beta_densify_threshold)
+            else:
+                selected_pts_mask = selected_pts_mask & (beta_vals >= self.beta_densify_threshold)
+        # safety: si no hay puntos seleccionados, salir
+        if selected_pts_mask.sum() == 0:
+            return
+        # ---------- fin filtro por beta ----------
 
         # ===============================
         # ✅ Deterministic DBS split
@@ -509,3 +527,114 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+    def relocate_gs(self, dead_mask):
+        """
+        Reutiliza (relocaliza) primitives marcadas como 'muertas' (dead_mask=True).
+        Estrategia:
+        - tomar como fuentes (living) puntos con probabilidad proporcional a su opacidad (o grad).
+        - copiar parámetros de la fuente al destino con un jitter pequeño en xyz.
+        - resetear low_opacity_counter en los destinos y ajustar opacidad inicial pequeña.
+        - Esto modifica los parámetros in-place (torch.no_grad) manteniendo la estructura del optimizador.
+        """
+        if dead_mask is None:
+            return
+        dead_mask = dead_mask.bool()
+        n_dead = int(dead_mask.sum().item())
+        if n_dead == 0:
+            return
+
+        N = self.get_xyz.shape[0]
+        alive_idx = (~dead_mask).nonzero(as_tuple=True)[0]
+        if alive_idx.numel() == 0:
+            return
+
+        # probabilidades de muestreo: preferir puntos con mayor opacidad (evitar ceros)
+        op = self.get_opacity.squeeze()
+        weights = op[alive_idx].clamp(min=1e-6)
+        weights = weights / weights.sum()
+
+        # sample sources
+        src_rel_idx = torch.multinomial(weights, n_dead, replacement=True)
+        src_idx = alive_idx[src_rel_idx]
+
+        # comportamiento in-place (sin grafo)
+        with torch.no_grad():
+            # pequeña jitter en función de la escala media
+            avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
+            jitter_scale = 0.05 * avg_scale  # factor ajustable
+            jitter = (torch.randn((n_dead, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale)
+
+            dst_idx = dead_mask.nonzero(as_tuple=True)[0]
+
+            # copiar xyz + jitter
+            self._xyz[dst_idx] = self._xyz[src_idx] + jitter
+
+            # copiar features
+            self._features_dc[dst_idx] = self._features_dc[src_idx].clone()
+            self._features_rest[dst_idx] = self._features_rest[src_idx].clone()
+
+            # copiar scaling/rotation (sin perturbación para estabilidad)
+            self._scaling[dst_idx] = self._scaling[src_idx].clone()
+            self._rotation[dst_idx] = self._rotation[src_idx].clone()
+
+            # opacidad inicial: la mitad de la fuente (o valor fijo pequeño)
+            src_alpha = self.get_opacity[src_idx]
+            new_alpha = (src_alpha * 0.5).clamp(min=1e-4, max=0.5)  # rango seguro
+            self._opacity[dst_idx] = self.inverse_opacity_activation(new_alpha)
+
+            # beta: copia la beta de la fuente (se puede ajustar si queremos preservar transmisión)
+            self._beta[dst_idx] = self._beta[src_idx].clone()
+
+            # reset counters / stats
+            self.low_opacity_counter[dst_idx] = 0
+            self.xyz_gradient_accum[dst_idx] = 0.0
+            self.denom[dst_idx] = 0.0
+            self.max_radii2D[dst_idx] = 0.0
+
+    def add_new_gs(self, cap_max):
+        """
+        Añade nuevos splats hasta alcanzar cap_max (o hasta un crecimiento razonable).
+        Estrategia:
+        - target = min(cap_max, int(1.05 * current_num_points))
+        - sample fuentes con probabilidad proporcional a opacidad o grad.
+        - crear nuevos tensores y llamar a densification_postfix(...) para concatenarlos correctamente
+        (esto actualiza el optimizador internamente).
+        """
+        cur = self.get_xyz.shape[0]
+        # target growth cap: 5% sobre current por paso, hasta cap_max
+        target = min(int(cap_max), int(math.ceil(1.05 * cur)))
+        k = target - cur
+        if k <= 0:
+            return
+
+        alive_idx = torch.arange(cur, device=self._xyz.device)
+        # preferir fuentes con opacidad alta
+        op = self.get_opacity.squeeze()
+        weights = op.clamp(min=1e-6)
+        weights = weights / weights.sum()
+
+        src_idx = torch.multinomial(weights, k, replacement=True)
+
+        # construir nuevos tensores a partir de las fuentes (con jitter pequeño)
+        with torch.no_grad():
+            avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
+            jitter_scale = 0.05 * avg_scale
+            jitter = (torch.randn((k, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale)
+
+            new_xyz = (self._xyz[src_idx] + jitter).detach().clone()
+            new_features_dc = self._features_dc[src_idx].detach().clone()
+            new_features_rest = self._features_rest[src_idx].detach().clone()
+            new_scaling = self._scaling[src_idx].detach().clone()
+            new_rotation = self._rotation[src_idx].detach().clone()
+
+            # Opacidades: dividir ligeramente para evitar saturación (como en clone)
+            src_alpha = self.get_opacity[src_idx]
+            new_alpha = (src_alpha / 2.0).clamp(min=1e-4, max=0.5)
+            new_opacity = self.inverse_opacity_activation(new_alpha)
+
+            # Beta: copiar de la fuente (puedes ajustar con -log(2) si deseas preservar transmitancia)
+            new_beta = self._beta[src_idx].detach().clone()
+
+        # usar la función existente para concatenar y actualizar optimizador
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_beta, new_scaling, new_rotation)

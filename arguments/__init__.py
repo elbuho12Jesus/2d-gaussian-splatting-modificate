@@ -83,6 +83,7 @@ class OptimizationParams(ParamGroup):
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01
+        self.cap_max = 100000
         self.lambda_dssim = 0.2
         self.lambda_dist = 0.0
         self.lambda_normal = 0.05
@@ -98,6 +99,8 @@ class OptimizationParams(ParamGroup):
         self.noise_opacity_exponent = 10.0
         # Factor de escala del ruido (learning-rate-style) que se aplica al desplazamiento posicional
         self.noise_lr = 1e-3
+        self.beta_densify_threshold = 0.0   # 0 = desactivado, >0 = umbral activado
+        self.beta_densify_mode = "split_wide"  # o "split_narrow"
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

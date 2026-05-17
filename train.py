@@ -55,7 +55,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_start.record()
 
-        gaussians.update_learning_rate(iteration)
+        xyz_lr = gaussians.update_learning_rate(iteration)
 
         # Every 1000 its we increase the levels of SH up to a maximum degree
         if iteration % 1000 == 0:
@@ -171,6 +171,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+
+                    # --- dead_mask basado en opacidad (condición DBS) ---
+                    # usamos el umbral opt.opacity_cull (ya definido)
+                    dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
+
+                    # Relocar primitives \"muertas\": reemplazar sus parámetros por copias perturbadas de puntos vivos
+                    gaussians.relocate_gs(dead_mask=dead_mask)
+
+                    # Añadir nuevas Gaussians hasta cap_max (clonando fuentes)
+                    # opt.cap_max debe existir en OptimizationParams (ver paso 3)
+                    gaussians.add_new_gs(cap_max=opt.cap_max)
+
+                    # Finalmente aplicar split/clone/prune tradicional
                     gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold)
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
@@ -179,17 +192,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # ✅ Gradient clipping SOLO para beta
             if gaussians._beta.grad is not None:
                 gaussians._beta.grad.data.clamp_(-1e-3, 1e-3)
-            # --- Ruido espacial adaptativo según opacidad (insertar aquí) ---
-            # Nota: usamos opt.noise_opacity_exponent (parser) y opt.noise_lr (si existe).
-            # Ajusta opt.noise_lr o reemplázalo por un valor fijo si no lo tienes.
 
-            # safety: obtener exponent desde opt o usar 10.0 por defecto
+            # --- Ruido espacial adaptativo según opacidad (insertado aquí) ---
             exp = getattr(opt, "noise_opacity_exponent", 10.0)
-            # learning-rate de ruido (por defecto 1e-3 si no está en opt)
             noise_lr = getattr(opt, "noise_lr", 1e-3)
 
             # base isotropic noise con forma igual que las posiciones
-            # utiliza gaussians.get_xyz si es tensor (asegúrate que es float cuda)
             base_noise = torch.randn_like(gaussians.get_xyz)
 
             # obtener opacities (detach para no introducir grafos)
@@ -197,10 +205,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if isinstance(opacity, torch.Tensor):
                 opacity = opacity.detach()
             else:
-                # si get_opacity es método, llamarlo
                 opacity = gaussians.get_opacity().detach()
 
-            # asegurar shape compatible (N,) -> (N,1) para broadcasting si base_noise es (N,2) o (N,3)
+            # asegurar shape compatible
             if opacity.dim() == 1:
                 noise_mult = (1.0 - opacity).clamp(min=0.0).pow(exp).unsqueeze(-1)
             else:
@@ -209,24 +216,23 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # aplicar multiplicador
             noise = base_noise * noise_mult
 
-            # Si deseas proyectar el ruido según escalas/rotaciones (anisotropía), puedes hacerlo
-            # si tu GaussianModel dispone de get_scaling/get_rotation y una función build_scaling_rotation.
-            # He aquí un ejemplo condicional (opcional):
+            # (opcional) proyectar por covarianza si tu modelo tiene esa función:
             try:
-                # build_scaling_rotation puede no existir en tu fork; si existe úsalo
                 L = gaussians.build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
-                actual_cov = L @ L.transpose(1, 2)  # (N, d, d)
+                actual_cov = L @ L.transpose(1, 2)
                 noise = torch.bmm(actual_cov, noise.unsqueeze(-1)).squeeze(-1)
             except Exception:
-                # si no hay anisotropía implementada, seguimos con ruido isotrópico
                 pass
 
-            # escalar por lr
-            noise = noise * noise_lr
+            # Escalado por noise_lr y por el lr actual de xyz (replicando el paper)
+            noise = noise * float(noise_lr) * float(xyz_lr)
 
-            # Añadir in-place a las posiciones sin afectar el grafo (es operación fuera de grad)
+            # Añadir in-place a las posiciones sin afectar el grafo
             with torch.no_grad():
-                gaussians.get_xyz.add_(noise)
+                try:
+                    gaussians._xyz.add_(noise)
+                except Exception:
+                    gaussians.get_xyz.add_(noise)
             # --- fin ruido adaptativo ---
             
             # Optimizer step
