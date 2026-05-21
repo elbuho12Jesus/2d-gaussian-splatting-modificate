@@ -101,18 +101,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # loss
         total_loss = loss + dist_loss + normal_loss
         
-        # ✅ regulariza el parámetro libre b, no beta
-        if iteration > 500:
-            beta_reg = 1e-4 * torch.mean(gaussians._beta ** 2)
+        # Warmup gradual para beta regularization
+        if iteration > 3000:
+            # Penalizar desviaciones extremas de Gaussian (b=0)
+            lambda_beta = min(1e-5 * (iteration - 3000) / 7000, 5e-5)
+            beta_reg = lambda_beta * torch.mean(gaussians._beta**2)
             total_loss = total_loss + beta_reg
 
-        # ✅ Opacity prior (DBS-style) — keep alpha small but non-zero
-        lambda_op = 1e-3  # valor inicial seguro
-
         opacity = gaussians.get_opacity  # shape: [N, 1] o [N]
-        loss_opacity = lambda_op * opacity.mean()
-
-        total_loss = total_loss + loss_opacity
+        if iteration > 1000:
+            # Penalizar solo opacidades muy altas (saturación)
+            lambda_op = 5e-4
+            over_opacity = torch.clamp(opacity - 0.9, min=0.0)
+            loss_opacity = lambda_op * over_opacity.mean()
+            total_loss = total_loss + loss_opacity        
 
         # ✅ Scale prior (DBS-style) — prevent huge splats compensating tiny opacity
         lambda_scale = 1e-3  # valor inicial seguro
@@ -168,30 +170,28 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration < opt.densify_until_iter:
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-
+                
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-
-                    # --- dead_mask basado en opacidad (condición DBS) ---
-                    # usamos el umbral opt.opacity_cull (ya definido)
-                    dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
-
-                    # Relocar primitives \"muertas\": reemplazar sus parámetros por copias perturbadas de puntos vivos
-                    gaussians.relocate_gs(dead_mask=dead_mask)
-
-                    # Añadir nuevas Gaussians hasta cap_max (clonando fuentes)
-                    # opt.cap_max debe existir en OptimizationParams (ver paso 3)
-                    gaussians.add_new_gs(cap_max=opt.cap_max)
-
-                    # Finalmente aplicar split/clone/prune tradicional
+                    
+                    # 1️⃣ Primero: Densificación tradicional (split/clone/prune por gradientes)
                     gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold)
+                    
+                    # 2️⃣ Segundo: Relocar gaussians con opacidad baja sostenida
+                    #    (esto reemplaza gaussians "muertos" por copias perturbadas de vivos)
+                    gaussians.relocate_gs(opacity_threshold=opt.opacity_cull, min_opacity_iters=100)
+                    
+                    # 3️⃣ Tercero: Crecer hasta cap_max si aún hay espacio
+                    #    (añade nuevos gaussians clonando los mejores)
+                    gaussians.add_new_gs(cap_max=opt.cap_max)
                 
+                # Reset de opacidades periódico
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
             # ✅ Gradient clipping SOLO para beta
             if gaussians._beta.grad is not None:
-                gaussians._beta.grad.data.clamp_(-1e-3, 1e-3)
+                gaussians._beta.grad.data.clamp_(-1e-2, 1e-2)
 
             # --- Ruido espacial adaptativo según opacidad (insertado aquí) ---
             exp = getattr(opt, "noise_opacity_exponent", 10.0)

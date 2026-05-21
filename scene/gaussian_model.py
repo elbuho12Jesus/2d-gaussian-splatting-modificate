@@ -151,13 +151,9 @@ class GaussianModel:
         self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(True))
-        self._opacity = nn.Parameter(opacities.requires_grad_(True))        
-        beta_init = torch.ones(
-            (fused_point_cloud.shape[0], 1),
-            device="cuda",
-            dtype=torch.float
-        )
-        self._beta = nn.Parameter(beta_init.requires_grad_(True))
+        self._opacity = nn.Parameter(opacities.requires_grad_(True))       
+        betas = torch.zeros((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")
+        self._beta = nn.Parameter(betas.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.low_opacity_counter = torch.zeros((self.get_xyz.shape[0],), device="cuda")
 
@@ -528,64 +524,71 @@ class GaussianModel:
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
 
-    def relocate_gs(self, dead_mask):
+    def relocate_gs(self, opacity_threshold=0.005, min_opacity_iters=100):
         """
-        Reutiliza (relocaliza) primitives marcadas como 'muertas' (dead_mask=True).
-        Estrategia:
-        - tomar como fuentes (living) puntos con probabilidad proporcional a su opacidad (o grad).
-        - copiar parámetros de la fuente al destino con un jitter pequeño en xyz.
-        - resetear low_opacity_counter en los destinos y ajustar opacidad inicial pequeña.
-        - Esto modifica los parámetros in-place (torch.no_grad) manteniendo la estructura del optimizador.
+        Relocaliza gaussians con opacidad baja sostenida.
+        Solo actúa sobre aquellos que han estado por debajo del umbral por min_opacity_iters.
         """
-        if dead_mask is None:
-            return
-        dead_mask = dead_mask.bool()
-        n_dead = int(dead_mask.sum().item())
+        cur_opacity = self.get_opacity.squeeze()
+        
+        # marcar los que están por debajo del umbral en esta iteración
+        low_mask = (cur_opacity <= opacity_threshold)
+        
+        # incrementar contador
+        self.low_opacity_counter[low_mask] += 1
+        self.low_opacity_counter[~low_mask] = 0  # reset si se recuperan
+        
+        # identificar "muertos" sostenidos
+        dead_mask = (self.low_opacity_counter >= min_opacity_iters)
+        n_dead = dead_mask.sum().item()
+        
         if n_dead == 0:
             return
-
-        N = self.get_xyz.shape[0]
-        alive_idx = (~dead_mask).nonzero(as_tuple=True)[0]
-        if alive_idx.numel() == 0:
+        
+        print(f"[Relocate] {n_dead} dead gaussians detected, relocating...")
+        
+        # índices muertos y vivos
+        dst_idx = dead_mask.nonzero(as_tuple=True)[0]  # ✅ AQUÍ se define dst_idx
+        alive_mask = ~dead_mask
+        alive_idx = alive_mask.nonzero(as_tuple=True)[0]
+        
+        if alive_idx.shape[0] == 0:
+            print("[Relocate] No alive gaussians to sample from, skipping.")
             return
-
-        # probabilidades de muestreo: preferir puntos con mayor opacidad (evitar ceros)
-        op = self.get_opacity.squeeze()
-        weights = op[alive_idx].clamp(min=1e-6)
+        
+        # seleccionar fuentes con pesos por opacidad
+        alive_op = cur_opacity[alive_idx]
+        weights = alive_op.clamp(min=1e-6)
         weights = weights / weights.sum()
-
-        # sample sources
-        src_rel_idx = torch.multinomial(weights, n_dead, replacement=True)
-        src_idx = alive_idx[src_rel_idx]
-
-        # comportamiento in-place (sin grafo)
+        
+        # samplear fuentes (con reemplazo si hay más muertos que vivos)
+        src_idx = alive_idx[torch.multinomial(weights, n_dead, replacement=True)]
+        
+        # aplicar jitter a las posiciones
         with torch.no_grad():
-            # pequeña jitter en función de la escala media
             avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
-            jitter_scale = 0.05 * avg_scale  # factor ajustable
-            jitter = (torch.randn((n_dead, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale)
-
-            dst_idx = dead_mask.nonzero(as_tuple=True)[0]
-
+            jitter_scale = 0.05 * avg_scale
+            jitter = torch.randn((n_dead, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale
+            
             # copiar xyz + jitter
             self._xyz[dst_idx] = self._xyz[src_idx] + jitter
-
+            
             # copiar features
             self._features_dc[dst_idx] = self._features_dc[src_idx].clone()
             self._features_rest[dst_idx] = self._features_rest[src_idx].clone()
-
-            # copiar scaling/rotation (sin perturbación para estabilidad)
+            
+            # copiar scaling/rotation
             self._scaling[dst_idx] = self._scaling[src_idx].clone()
             self._rotation[dst_idx] = self._rotation[src_idx].clone()
-
-            # opacidad inicial: la mitad de la fuente (o valor fijo pequeño)
+            
+            # opacidad inicial: reducida para evitar saturación
             src_alpha = self.get_opacity[src_idx]
-            new_alpha = (src_alpha * 0.5).clamp(min=1e-4, max=0.5)  # rango seguro
+            new_alpha = (src_alpha / 1.5).clamp(min=1e-3, max=0.95)  # ✅ rango ajustado
             self._opacity[dst_idx] = self.inverse_opacity_activation(new_alpha)
-
-            # beta: copia la beta de la fuente (se puede ajustar si queremos preservar transmisión)
+            
+            # beta: copia de la fuente
             self._beta[dst_idx] = self._beta[src_idx].clone()
-
+            
             # reset counters / stats
             self.low_opacity_counter[dst_idx] = 0
             self.xyz_gradient_accum[dst_idx] = 0.0
@@ -597,44 +600,52 @@ class GaussianModel:
         Añade nuevos splats hasta alcanzar cap_max (o hasta un crecimiento razonable).
         Estrategia:
         - target = min(cap_max, int(1.05 * current_num_points))
-        - sample fuentes con probabilidad proporcional a opacidad o grad.
-        - crear nuevos tensores y llamar a densification_postfix(...) para concatenarlos correctamente
-        (esto actualiza el optimizador internamente).
+        - sample fuentes con probabilidad proporcional a opacidad
+        - crear nuevos tensores y llamar a densification_postfix para concatenarlos
         """
         cur = self.get_xyz.shape[0]
+        
         # target growth cap: 5% sobre current por paso, hasta cap_max
         target = min(int(cap_max), int(math.ceil(1.05 * cur)))
         k = target - cur
+        
         if k <= 0:
             return
-
-        alive_idx = torch.arange(cur, device=self._xyz.device)
+        
         # preferir fuentes con opacidad alta
         op = self.get_opacity.squeeze()
         weights = op.clamp(min=1e-6)
         weights = weights / weights.sum()
-
+        
         src_idx = torch.multinomial(weights, k, replacement=True)
-
+        
         # construir nuevos tensores a partir de las fuentes (con jitter pequeño)
         with torch.no_grad():
             avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
             jitter_scale = 0.05 * avg_scale
-            jitter = (torch.randn((k, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale)
-
+            jitter = torch.randn((k, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale
+            
             new_xyz = (self._xyz[src_idx] + jitter).detach().clone()
             new_features_dc = self._features_dc[src_idx].detach().clone()
             new_features_rest = self._features_rest[src_idx].detach().clone()
             new_scaling = self._scaling[src_idx].detach().clone()
             new_rotation = self._rotation[src_idx].detach().clone()
-
-            # Opacidades: dividir ligeramente para evitar saturación (como en clone)
+            
+            # Opacidades: dividir para evitar saturación
             src_alpha = self.get_opacity[src_idx]
-            new_alpha = (src_alpha / 2.0).clamp(min=1e-4, max=0.5)
+            new_alpha = (src_alpha / 1.5).clamp(min=1e-3, max=0.95)  # ✅ mismo rango que relocate
             new_opacity = self.inverse_opacity_activation(new_alpha)
-
-            # Beta: copiar de la fuente (puedes ajustar con -log(2) si deseas preservar transmitancia)
+            
+            # Beta: copiar de la fuente
             new_beta = self._beta[src_idx].detach().clone()
-
-        # usar la función existente para concatenar y actualizar optimizador
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_beta, new_scaling, new_rotation)
+            
+            # ✅ usar la función existente para concatenar y actualizar optimizador
+            self.densification_postfix(
+                new_xyz, 
+                new_features_dc, 
+                new_features_rest, 
+                new_opacity, 
+                new_beta,  # asegúrate que densification_postfix acepte beta
+                new_scaling, 
+                new_rotation
+            )
