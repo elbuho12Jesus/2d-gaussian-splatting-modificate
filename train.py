@@ -100,30 +100,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # loss
         total_loss = loss + dist_loss + normal_loss
-        
-        # Warmup gradual para beta regularization
-        if iteration > 3000:
-            # Penalizar desviaciones extremas de Gaussian (b=0)
-            lambda_beta = min(1e-5 * (iteration - 3000) / 7000, 5e-5)
-            beta_reg = lambda_beta * torch.mean(gaussians._beta**2)
-            total_loss = total_loss + beta_reg
 
-        opacity = gaussians.get_opacity  # shape: [N, 1] o [N]
-        if iteration > 1000:
-            # Penalizar solo opacidades muy altas (saturación)
-            lambda_op = 5e-4
-            over_opacity = torch.clamp(opacity - 0.9, min=0.0)
-            loss_opacity = lambda_op * over_opacity.mean()
-            total_loss = total_loss + loss_opacity        
+        # Regularizers (matching official Beta Splatting): opacity_reg + scale_reg L1.
+        # Active only during densification window, as in beta-splatting/train.py.
+        if opt.densify_from_iter < iteration < opt.densify_until_iter:
+            total_loss = total_loss + opt.opacity_reg * gaussians.get_opacity.abs().mean()
+            total_loss = total_loss + opt.scale_reg * gaussians.get_scaling.abs().mean()
 
-        # ✅ Scale prior (DBS-style) — prevent huge splats compensating tiny opacity
-        lambda_scale = 1e-3  # valor inicial seguro
-
-        scales = gaussians.get_scaling  # shape [N, 2] = (s_x, s_y)
-        loss_scale = lambda_scale * scales.sum(dim=1).mean()
-
-        total_loss = total_loss + loss_scale
-        
         total_loss.backward()
         
         # ✅ DEBUG gradiente de beta (DESPUÉS del backward)
@@ -163,80 +146,55 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
+                # Prune definitivo de NaN antes de guardar: evita zonas negras al renderizar.
+                gaussians.prune_nan_splats(iteration=iteration)
                 scene.save(iteration)
 
 
-            # Densification
+            # Densification (MCMC, alineado con Beta Splatting oficial).
+            # Solo relocate + add_new (sin densify_and_prune 2DGS). Ruido posicional
+            # se aplica únicamente en los pasos de densify para evitar la divergencia
+            # numérica que se observó en Run 2 (NaN tras iter 30000).
             if iteration < opt.densify_until_iter:
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-                
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    
-                    # 1️⃣ Primero: Densificación tradicional (split/clone/prune por gradientes)
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold)
-                    
-                    # 2️⃣ Segundo: Relocar gaussians con opacidad baja sostenida
-                    #    (esto reemplaza gaussians "muertos" por copias perturbadas de vivos)
-                    gaussians.relocate_gs(opacity_threshold=opt.opacity_cull, min_opacity_iters=100)
-                    
-                    # 3️⃣ Tercero: Crecer hasta cap_max si aún hay espacio
-                    #    (añade nuevos gaussians clonando los mejores)
+                    # Defensa: sanear NaN/Inf que puedan haber entrado por gradientes
+                    # explosivos o por desplazamientos extremos del ruido posicional.
+                    gaussians.sanitize_parameters(iteration=iteration)
+                    dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
+                    gaussians.relocate_gs(dead_mask=dead_mask)
                     gaussians.add_new_gs(cap_max=opt.cap_max)
-                
-                # Reset de opacidades periódico
+
+                    # Ruido posicional MCMC. Covariance-shaped noise desactivado:
+                    # diff-surfel-rasterization usa scales 2D pero build_scaling_rotation
+                    # accede a s[:,2] → IndexError silencioso en la versión anterior.
+                    # Aplicamos solo ruido isotrópico, suficiente para perturbar splats
+                    # casi muertos (con (1-op)^100 ≈ 1) sin tocar los útiles.
+                    with torch.no_grad():
+                        noise_exp = float(getattr(opt, "noise_opacity_exponent", 100.0))
+                        noise_lr = float(getattr(opt, "noise_lr", 5e5))
+                        base_noise = torch.randn_like(gaussians._xyz)
+                        noise_mult = torch.pow(1.0 - gaussians.get_opacity, noise_exp)
+                        noise = base_noise * noise_mult * noise_lr * float(xyz_lr)
+                        gaussians._xyz.add_(noise)
+
+                # Reset de opacidades periódico (default deshabilitado: interval=1e9)
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
-
-            # ✅ Gradient clipping SOLO para beta
-            if gaussians._beta.grad is not None:
-                gaussians._beta.grad.data.clamp_(-1e-2, 1e-2)
-
-            # --- Ruido espacial adaptativo según opacidad (insertado aquí) ---
-            exp = getattr(opt, "noise_opacity_exponent", 10.0)
-            noise_lr = getattr(opt, "noise_lr", 1e-3)
-
-            # base isotropic noise con forma igual que las posiciones
-            base_noise = torch.randn_like(gaussians.get_xyz)
-
-            # obtener opacities (detach para no introducir grafos)
-            opacity = gaussians.get_opacity
-            if isinstance(opacity, torch.Tensor):
-                opacity = opacity.detach()
             else:
-                opacity = gaussians.get_opacity().detach()
+                # Post-densify: sanear NaN/Inf cada densification_interval pasos para que
+                # los últimos miles de iters no acumulen splats degenerados (zonas negras).
+                if iteration % opt.densification_interval == 0:
+                    gaussians.sanitize_parameters(iteration=iteration)
 
-            # asegurar shape compatible
-            if opacity.dim() == 1:
-                noise_mult = (1.0 - opacity).clamp(min=0.0).pow(exp).unsqueeze(-1)
-            else:
-                noise_mult = (1.0 - opacity).clamp(min=0.0).pow(exp)
-
-            # aplicar multiplicador
-            noise = base_noise * noise_mult
-
-            # (opcional) proyectar por covarianza si tu modelo tiene esa función:
-            try:
-                L = gaussians.build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
-                actual_cov = L @ L.transpose(1, 2)
-                noise = torch.bmm(actual_cov, noise.unsqueeze(-1)).squeeze(-1)
-            except Exception:
-                pass
-
-            # Escalado por noise_lr y por el lr actual de xyz (replicando el paper)
-            noise = noise * float(noise_lr) * float(xyz_lr)
-
-            # Añadir in-place a las posiciones sin afectar el grafo
-            with torch.no_grad():
-                try:
-                    gaussians._xyz.add_(noise)
-                except Exception:
-                    gaussians.get_xyz.add_(noise)
-            # --- fin ruido adaptativo ---
-            
             # Optimizer step
             if iteration < opt.iterations:
+                # NaN-safe: limpia gradientes con NaN/Inf antes de step. Evita que un
+                # único batch con gradiente patológico contamine los parámetros para
+                # siempre. Cubre TODAS las iters (no solo las de densificación).
+                for p in gaussians.optimizer.param_groups:
+                    for tensor in p['params']:
+                        if tensor.grad is not None:
+                            torch.nan_to_num_(tensor.grad, nan=0.0, posinf=0.0, neginf=0.0)
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
 

@@ -144,7 +144,7 @@ class GaussianModel:
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 2)
         rots = torch.rand((fused_point_cloud.shape[0], 4), device="cuda")
 
-        opacities = self.inverse_opacity_activation(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
+        opacities = self.inverse_opacity_activation(0.5 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
@@ -524,128 +524,174 @@ class GaussianModel:
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
 
-    def relocate_gs(self, opacity_threshold=0.005, min_opacity_iters=100):
+    def _reset_optimizer_state(self, inds):
+        """Pone exp_avg / exp_avg_sq a 0 para los índices dados (in-place)."""
+        for group in self.optimizer.param_groups:
+            stored_state = self.optimizer.state.get(group['params'][0], None)
+            if stored_state is None:
+                continue
+            stored_state["exp_avg"][inds] = 0
+            stored_state["exp_avg_sq"][inds] = 0
+
+    def relocate_gs(self, dead_mask):
+        """MCMC-style relocation (alineado con Beta Splatting oficial).
+        Copia splats vivos en los slots muertos. Sin jitter posicional — la
+        perturbación viene del paso de ruido posterior en train.py. Aplica la
+        regla de conservación de transmittance: src y dst comparten new_alpha = src/2.
         """
-        Relocaliza gaussians con opacidad baja sostenida.
-        Solo actúa sobre aquellos que han estado por debajo del umbral por min_opacity_iters.
-        """
-        cur_opacity = self.get_opacity.squeeze()
-        
-        # marcar los que están por debajo del umbral en esta iteración
-        low_mask = (cur_opacity <= opacity_threshold)
-        
-        # incrementar contador
-        self.low_opacity_counter[low_mask] += 1
-        self.low_opacity_counter[~low_mask] = 0  # reset si se recuperan
-        
-        # identificar "muertos" sostenidos
-        dead_mask = (self.low_opacity_counter >= min_opacity_iters)
-        n_dead = dead_mask.sum().item()
-        
+        n_dead = int(dead_mask.sum().item())
         if n_dead == 0:
             return
-        
-        print(f"[Relocate] {n_dead} dead gaussians detected, relocating...")
-        
-        # índices muertos y vivos
-        dst_idx = dead_mask.nonzero(as_tuple=True)[0]  # ✅ AQUÍ se define dst_idx
         alive_mask = ~dead_mask
+        dead_idx = dead_mask.nonzero(as_tuple=True)[0]
         alive_idx = alive_mask.nonzero(as_tuple=True)[0]
-        
         if alive_idx.shape[0] == 0:
-            print("[Relocate] No alive gaussians to sample from, skipping.")
             return
-        
-        # seleccionar fuentes con pesos por opacidad
-        alive_op = cur_opacity[alive_idx]
-        weights = alive_op.clamp(min=1e-6)
-        weights = weights / weights.sum()
-        
-        # samplear fuentes (con reemplazo si hay más muertos que vivos)
+
+        alive_op = self.get_opacity.squeeze()[alive_idx]
+        alive_op = torch.nan_to_num(alive_op, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=1e-6)
+        total = alive_op.sum()
+        if not torch.isfinite(total) or total <= 0:
+            print(f"[relocate_gs] WARNING: pesos no válidos (sum={total.item()}); se omite relocate este paso")
+            return
+        weights = alive_op / total
         src_idx = alive_idx[torch.multinomial(weights, n_dead, replacement=True)]
-        
-        # aplicar jitter a las posiciones
+
         with torch.no_grad():
-            avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
-            jitter_scale = 0.05 * avg_scale
-            jitter = torch.randn((n_dead, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale
-            
-            # copiar xyz + jitter
-            self._xyz[dst_idx] = self._xyz[src_idx] + jitter
-            
-            # copiar features
-            self._features_dc[dst_idx] = self._features_dc[src_idx].clone()
-            self._features_rest[dst_idx] = self._features_rest[src_idx].clone()
-            
-            # copiar scaling/rotation
-            self._scaling[dst_idx] = self._scaling[src_idx].clone()
-            self._rotation[dst_idx] = self._rotation[src_idx].clone()
-            
-            # opacidad inicial: reducida para evitar saturación
-            src_alpha = self.get_opacity[src_idx]
-            new_alpha = (src_alpha / 1.5).clamp(min=1e-3, max=0.95)  # ✅ rango ajustado
-            self._opacity[dst_idx] = self.inverse_opacity_activation(new_alpha)
-            
-            # beta: copia de la fuente
-            self._beta[dst_idx] = self._beta[src_idx].clone()
-            
-            # reset counters / stats
-            self.low_opacity_counter[dst_idx] = 0
-            self.xyz_gradient_accum[dst_idx] = 0.0
-            self.denom[dst_idx] = 0.0
-            self.max_radii2D[dst_idx] = 0.0
+            src_alpha = self.get_opacity[src_idx].clamp(min=2e-3, max=1.0 - 1e-3)
+            new_alpha = (src_alpha * 0.5).clamp(min=1e-3)
+            new_opacity_raw = self.inverse_opacity_activation(new_alpha)
+
+            self._xyz[dead_idx] = self._xyz[src_idx]
+            self._features_dc[dead_idx] = self._features_dc[src_idx]
+            self._features_rest[dead_idx] = self._features_rest[src_idx]
+            self._scaling[dead_idx] = self._scaling[src_idx]
+            self._rotation[dead_idx] = self._rotation[src_idx]
+            self._beta[dead_idx] = self._beta[src_idx]
+            self._opacity[dead_idx] = new_opacity_raw
+            self._opacity[src_idx] = new_opacity_raw
+
+            self.low_opacity_counter[dead_idx] = 0
+            self.xyz_gradient_accum[dead_idx] = 0.0
+            self.denom[dead_idx] = 0.0
+            self.max_radii2D[dead_idx] = 0.0
+
+        reset_idx = torch.cat([dead_idx, src_idx]).unique()
+        self._reset_optimizer_state(reset_idx)
 
     def add_new_gs(self, cap_max):
+        """Crece hasta cap_max copiando splats vivos (sin jitter posicional).
+        Las posiciones se perturban después en el paso de ruido MCMC en train.py.
         """
-        Añade nuevos splats hasta alcanzar cap_max (o hasta un crecimiento razonable).
-        Estrategia:
-        - target = min(cap_max, int(1.05 * current_num_points))
-        - sample fuentes con probabilidad proporcional a opacidad
-        - crear nuevos tensores y llamar a densification_postfix para concatenarlos
-        """
-        cur = self.get_xyz.shape[0]
-        
-        # target growth cap: 5% sobre current por paso, hasta cap_max
+        cur = self._xyz.shape[0]
         target = min(int(cap_max), int(math.ceil(1.05 * cur)))
         k = target - cur
-        
         if k <= 0:
             return
-        
-        # preferir fuentes con opacidad alta
-        op = self.get_opacity.squeeze()
-        weights = op.clamp(min=1e-6)
-        weights = weights / weights.sum()
-        
-        src_idx = torch.multinomial(weights, k, replacement=True)
-        
-        # construir nuevos tensores a partir de las fuentes (con jitter pequeño)
+
+        probs = self.get_opacity.squeeze()
+        probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=1e-6)
+        total = probs.sum()
+        if not torch.isfinite(total) or total <= 0:
+            print(f"[add_new_gs] WARNING: pesos no válidos (sum={total.item()}); se omite add_new este paso")
+            return
+        probs = probs / total
+        src_idx = torch.multinomial(probs, k, replacement=True)
+
         with torch.no_grad():
-            avg_scale = self.get_scaling.mean().mean().clamp(min=1e-6)
-            jitter_scale = 0.05 * avg_scale
-            jitter = torch.randn((k, self.get_xyz.shape[1]), device=self._xyz.device) * jitter_scale
-            
-            new_xyz = (self._xyz[src_idx] + jitter).detach().clone()
+            src_alpha = self.get_opacity[src_idx].clamp(min=2e-3, max=1.0 - 1e-3)
+            new_alpha = (src_alpha * 0.5).clamp(min=1e-3)
+            new_opacity_raw = self.inverse_opacity_activation(new_alpha)
+
+            new_xyz = self._xyz[src_idx].detach().clone()
             new_features_dc = self._features_dc[src_idx].detach().clone()
             new_features_rest = self._features_rest[src_idx].detach().clone()
             new_scaling = self._scaling[src_idx].detach().clone()
             new_rotation = self._rotation[src_idx].detach().clone()
-            
-            # Opacidades: dividir para evitar saturación
-            src_alpha = self.get_opacity[src_idx]
-            new_alpha = (src_alpha / 1.5).clamp(min=1e-3, max=0.95)  # ✅ mismo rango que relocate
-            new_opacity = self.inverse_opacity_activation(new_alpha)
-            
-            # Beta: copiar de la fuente
             new_beta = self._beta[src_idx].detach().clone()
-            
-            # ✅ usar la función existente para concatenar y actualizar optimizador
-            self.densification_postfix(
-                new_xyz, 
-                new_features_dc, 
-                new_features_rest, 
-                new_opacity, 
-                new_beta,  # asegúrate que densification_postfix acepte beta
-                new_scaling, 
-                new_rotation
-            )
+            new_opacity = new_opacity_raw.detach().clone()
+
+            # Reducir opacidad de los srcs ANTES del postfix (que reasigna _opacity).
+            self._opacity[src_idx] = new_opacity_raw
+
+        self.densification_postfix(
+            new_xyz, new_features_dc, new_features_rest,
+            new_opacity, new_beta, new_scaling, new_rotation,
+        )
+        self._reset_optimizer_state(src_idx.unique())
+
+    def sanitize_parameters(self, iteration=None):
+        """Detecta NaN/Inf en parámetros y los repara in-place.
+        Devuelve el número de splats saneados. Marca los splats afectados como
+        casi-muertos (opacity ≈ 1e-4) para que el siguiente relocate los recicle.
+        Resetea momentum/varianza del optimizer para esos índices.
+        """
+        with torch.no_grad():
+            def bad_rows(t):
+                if t.dim() == 1:
+                    return ~torch.isfinite(t)
+                return ~torch.isfinite(t.view(t.shape[0], -1)).all(dim=1)
+
+            mask = bad_rows(self._xyz)
+            mask = mask | bad_rows(self._opacity)
+            mask = mask | bad_rows(self._scaling)
+            mask = mask | bad_rows(self._rotation)
+            mask = mask | bad_rows(self._features_dc)
+            mask = mask | bad_rows(self._features_rest)
+            mask = mask | bad_rows(self._beta)
+            n_bad = int(mask.sum().item())
+            if n_bad == 0:
+                return 0
+
+            tag = f"[Iter {iteration}] " if iteration is not None else ""
+            print(f"{tag}WARNING: detectados {n_bad} splats con NaN/Inf — saneando")
+
+            dev = self._xyz.device
+            self._xyz.data[mask] = 0.0
+            # opacity ≈ 1e-4 ⇒ caerá bajo opacity_cull (0.005) ⇒ relocate la próxima vez
+            tiny_alpha = torch.tensor(1e-4, device=dev)
+            self._opacity.data[mask] = self.inverse_opacity_activation(tiny_alpha)
+            # scale en log-space; exp(-5) ≈ 6.7e-3
+            self._scaling.data[mask] = -5.0
+            # quaternion identidad (1,0,0,0)
+            self._rotation.data[mask] = 0.0
+            self._rotation.data[mask, 0] = 1.0
+            self._features_dc.data[mask] = 0.0
+            self._features_rest.data[mask] = 0.0
+            self._beta.data[mask] = 0.0
+            # buffers densificación
+            if self.xyz_gradient_accum.shape[0] == mask.shape[0]:
+                self.xyz_gradient_accum[mask] = 0.0
+                self.denom[mask] = 0.0
+                self.max_radii2D[mask] = 0.0
+            if self.low_opacity_counter.shape[0] == mask.shape[0]:
+                self.low_opacity_counter[mask] = 0
+
+            self._reset_optimizer_state(mask.nonzero(as_tuple=True)[0])
+            return n_bad
+
+    def prune_nan_splats(self, iteration=None):
+        """Elimina definitivamente los splats con NaN/Inf en cualquier parámetro.
+        A diferencia de sanitize_parameters (que los recicla), prune_nan_splats los
+        borra del modelo. Usar antes del save final para que el PLY no tenga NaN.
+        """
+        with torch.no_grad():
+            def bad_rows(t):
+                if t.dim() == 1:
+                    return ~torch.isfinite(t)
+                return ~torch.isfinite(t.view(t.shape[0], -1)).all(dim=1)
+
+            mask = bad_rows(self._xyz)
+            mask = mask | bad_rows(self._opacity)
+            mask = mask | bad_rows(self._scaling)
+            mask = mask | bad_rows(self._rotation)
+            mask = mask | bad_rows(self._features_dc)
+            mask = mask | bad_rows(self._features_rest)
+            mask = mask | bad_rows(self._beta)
+            n_bad = int(mask.sum().item())
+            if n_bad == 0:
+                return 0
+            tag = f"[Iter {iteration}] " if iteration is not None else ""
+            print(f"{tag}prune_nan_splats: eliminando {n_bad} splats con NaN/Inf")
+        self.prune_points(mask)
+        return n_bad

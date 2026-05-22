@@ -79,7 +79,7 @@ class OptimizationParams(ParamGroup):
         self.position_lr_max_steps = 30_000
         self.feature_lr = 0.0025
         self.opacity_lr = 0.05
-        self.beta_lr = 0.025
+        self.beta_lr = 0.001
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01
@@ -87,18 +87,23 @@ class OptimizationParams(ParamGroup):
         self.lambda_dssim = 0.2
         self.lambda_dist = 0.0
         self.lambda_normal = 0.05
-        self.opacity_cull = 0.05
+        self.opacity_cull = 0.005
+        self.scale_reg = 0.01
+        self.opacity_reg = 0.01
 
         self.densification_interval = 100
-        self.opacity_reset_interval = 3000
+        self.opacity_reset_interval = 1_000_000_000
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
-        # --- Añadidos para ruido posicional adaptativo ---
+        # --- Ruido posicional MCMC (alineado con Beta Splatting oficial) ---
         # Exponente para el multiplicador de ruido: (1 - opacity) ** exp
-        self.noise_opacity_exponent = 10.0
-        # Factor de escala del ruido (learning-rate-style) que se aplica al desplazamiento posicional
-        self.noise_lr = 1e-3
+        self.noise_opacity_exponent = 100.0
+        # Factor de escala del ruido. Default oficial = 5e4 (se multiplica por xyz_lr ~1e-6).
+        # Histórico: 5e5 producía desplazamientos ~0.5 unidades world en splats
+        # casi-muertos → NaN en _opacity (Run 3). Bajado a 1e5 estabilizó, y a 5e4
+        # en Run 8 para alinear con el oficial y reducir desperdicio de splats.
+        self.noise_lr = 5e4
         self.beta_densify_threshold = 0.0   # 0 = desactivado, >0 = umbral activado
         self.beta_densify_mode = "split_wide"  # o "split_narrow"
         # ---------------------------------------------------

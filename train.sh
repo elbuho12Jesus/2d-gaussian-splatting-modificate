@@ -1,7 +1,11 @@
-python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/flowers -m output/m360/flowers \
+python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/flowers \
+    -m output/m360/flowers_beta_run9 \
     --iterations 50000 \
-    --densify_until_iter 25000 \
-    --opacity_reset_interval 5000 \
-    --lambda_normal 0.05 \
-    --lambda_dist 100 \
-    --cap_max 500000
+    --test_iterations 7000 15000 30000 50000 \
+    --densify_until_iter 45000 \
+    --lambda_normal 0.0 \
+    --lambda_dist 0.0 \
+    --cap_max 1500000 \
+    --noise_lr 5e4 \
+    --scale_reg 0.005 \
+    --opacity_cull 0.005

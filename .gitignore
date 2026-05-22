@@ -13,3 +13,4 @@ datasets
 eval
 *.npz
 **/tmp
+CLAUDE.md
