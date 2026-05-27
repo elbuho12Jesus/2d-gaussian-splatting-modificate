@@ -151,6 +151,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 scene.save(iteration)
 
 
+            # Acumular señal de error de reconstrucción por splat (norma del gradiente
+            # de viewspace). La consume el muestreo MCMC sesgado por error en
+            # relocate_gs/add_new_gs. Se acumula en cada iteración del intervalo;
+            # densification_postfix la resetea al añadir splats.
+            if iteration < opt.densify_until_iter:
+                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+
             # Densification (MCMC, alineado con Beta Splatting oficial).
             # Solo relocate + add_new (sin densify_and_prune 2DGS). Ruido posicional
             # se aplica únicamente en los pasos de densify para evitar la divergencia
@@ -161,8 +168,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     # explosivos o por desplazamientos extremos del ruido posicional.
                     gaussians.sanitize_parameters(iteration=iteration)
                     dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
-                    gaussians.relocate_gs(dead_mask=dead_mask)
-                    gaussians.add_new_gs(cap_max=opt.cap_max)
+                    gaussians.relocate_gs(dead_mask=dead_mask, error_weight=opt.mcmc_error_weight)
+                    gaussians.add_new_gs(cap_max=opt.cap_max, error_weight=opt.mcmc_error_weight)
 
                     # Ruido posicional MCMC. Covariance-shaped noise desactivado:
                     # diff-surfel-rasterization usa scales 2D pero build_scaling_rotation

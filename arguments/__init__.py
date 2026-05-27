@@ -104,6 +104,13 @@ class OptimizationParams(ParamGroup):
         # casi-muertos → NaN en _opacity (Run 3). Bajado a 1e5 estabilizó, y a 5e4
         # en Run 8 para alinear con el oficial y reducir desperdicio de splats.
         self.noise_lr = 5e4
+        # --- Muestreo MCMC sesgado por error de reconstrucción ---
+        # Blend constante: probs ∝ opacity · (1 + mcmc_error_weight · error_norm),
+        # donde error_norm = gradiente de viewspace acumulado por splat (proxy 3DGS de
+        # zona sub-reconstruida), normalizado por su media. 0 = muestreo por opacidad
+        # pura (comportamiento previo). Sube presupuesto a bordes de zonas mal cubiertas
+        # (huecos negros de césped/cielo) sin perder el detalle de foreground.
+        self.mcmc_error_weight = 2.0
         self.beta_densify_threshold = 0.0   # 0 = desactivado, >0 = umbral activado
         self.beta_densify_mode = "split_wide"  # o "split_narrow"
         # ---------------------------------------------------

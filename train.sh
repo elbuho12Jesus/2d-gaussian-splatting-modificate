@@ -1,5 +1,5 @@
-python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/flowers \
-    -m output/m360/flowers_beta_run9 \
+python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/bonsai \
+    -m output/m360/bonsai_beta_run2 \
     --iterations 50000 \
     --test_iterations 7000 15000 30000 50000 \
     --densify_until_iter 45000 \
@@ -8,4 +8,5 @@ python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/flo
     --cap_max 1500000 \
     --noise_lr 5e4 \
     --scale_reg 0.005 \
-    --opacity_cull 0.005
+    --opacity_cull 0.005 \
+    --mcmc_error_weight 2.0

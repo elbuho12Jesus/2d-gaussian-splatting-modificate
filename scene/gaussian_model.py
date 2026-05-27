@@ -533,11 +533,35 @@ class GaussianModel:
             stored_state["exp_avg"][inds] = 0
             stored_state["exp_avg_sq"][inds] = 0
 
-    def relocate_gs(self, dead_mask):
+    def _error_signal(self, clip=10.0):
+        """Error de reconstrucción por splat ∝ gradiente de viewspace acumulado.
+        Es el proxy clásico de 3DGS para "splat en zona sub-reconstruida": se
+        acumula en add_densification_stats entre densificaciones y densification_postfix
+        lo resetea al añadir splats. Devuelve un tensor [N] normalizado por la media
+        de los splats con señal (media ≈ 1) y clampeado a `clip` para que ningún
+        outlier domine el muestreo multinomial. Splats sin señal (no visibles en el
+        intervalo) reciben 0 → caen a muestreo por opacidad pura.
+        """
+        if self.denom.numel() == 0 or self.xyz_gradient_accum.numel() == 0:
+            return torch.zeros(self._xyz.shape[0], device=self._xyz.device)
+        denom = self.denom.clamp(min=1.0)
+        grad = (self.xyz_gradient_accum / denom).squeeze(-1)
+        grad = torch.nan_to_num(grad, nan=0.0, posinf=0.0, neginf=0.0)
+        pos = grad > 0
+        if not pos.any():
+            return torch.zeros_like(grad)
+        mean = grad[pos].mean()
+        if not torch.isfinite(mean) or mean <= 0:
+            return torch.zeros_like(grad)
+        return (grad / mean).clamp(max=clip)
+
+    def relocate_gs(self, dead_mask, error_weight=0.0):
         """MCMC-style relocation (alineado con Beta Splatting oficial).
         Copia splats vivos en los slots muertos. Sin jitter posicional — la
         perturbación viene del paso de ruido posterior en train.py. Aplica la
         regla de conservación de transmittance: src y dst comparten new_alpha = src/2.
+        Con error_weight>0, el muestreo de fuentes se sesga hacia splats de alto
+        error de reconstrucción (no solo alta opacidad) para cubrir zonas mal resueltas.
         """
         n_dead = int(dead_mask.sum().item())
         if n_dead == 0:
@@ -549,6 +573,9 @@ class GaussianModel:
             return
 
         alive_op = self.get_opacity.squeeze()[alive_idx]
+        if error_weight > 0.0:
+            err = self._error_signal()
+            alive_op = alive_op * (1.0 + error_weight * err[alive_idx])
         alive_op = torch.nan_to_num(alive_op, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=1e-6)
         total = alive_op.sum()
         if not torch.isfinite(total) or total <= 0:
@@ -579,9 +606,11 @@ class GaussianModel:
         reset_idx = torch.cat([dead_idx, src_idx]).unique()
         self._reset_optimizer_state(reset_idx)
 
-    def add_new_gs(self, cap_max):
+    def add_new_gs(self, cap_max, error_weight=0.0):
         """Crece hasta cap_max copiando splats vivos (sin jitter posicional).
         Las posiciones se perturban después en el paso de ruido MCMC en train.py.
+        Con error_weight>0, el muestreo de fuentes se sesga hacia splats de alto
+        error de reconstrucción para sembrar nuevos splats cerca de zonas mal resueltas.
         """
         cur = self._xyz.shape[0]
         target = min(int(cap_max), int(math.ceil(1.05 * cur)))
@@ -590,6 +619,9 @@ class GaussianModel:
             return
 
         probs = self.get_opacity.squeeze()
+        if error_weight > 0.0:
+            err = self._error_signal()
+            probs = probs * (1.0 + error_weight * err)
         probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=1e-6)
         total = probs.sum()
         if not torch.isfinite(total) or total <= 0:
