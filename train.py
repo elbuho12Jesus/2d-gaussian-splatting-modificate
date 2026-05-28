@@ -169,7 +169,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     gaussians.sanitize_parameters(iteration=iteration)
                     dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
                     gaussians.relocate_gs(dead_mask=dead_mask, error_weight=opt.mcmc_error_weight)
-                    gaussians.add_new_gs(cap_max=opt.cap_max, error_weight=opt.mcmc_error_weight)
+                    gaussians.add_new_gs(cap_max=opt.cap_max, error_weight=opt.mcmc_error_weight, jitter_scale=opt.mcmc_jitter_scale)
 
                     # Ruido posicional MCMC. Covariance-shaped noise desactivado:
                     # diff-surfel-rasterization usa scales 2D pero build_scaling_rotation

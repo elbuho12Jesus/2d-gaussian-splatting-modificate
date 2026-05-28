@@ -111,6 +111,14 @@ class OptimizationParams(ParamGroup):
         # pura (comportamiento previo). Sube presupuesto a bordes de zonas mal cubiertas
         # (huecos negros de césped/cielo) sin perder el detalle de foreground.
         self.mcmc_error_weight = 2.0
+        # Jitter posicional en add_new_gs proporcional a error × scale del src.
+        # Sirve para sembrar splats DENTRO de huecos vacíos: sin jitter, add_new_gs
+        # clona en la misma posición que el src (que vive en el BORDE del hueco
+        # donde el error sube), así que el clon también nace en el borde y el
+        # interior nunca se rellena. Con jitter_scale > 0, los srcs de alto error
+        # producen clones desplazados ~ direction · scale_src · (jitter_scale · err).
+        # 0 = sin jitter (comportamiento previo). Solo se activa si error_weight > 0.
+        self.mcmc_jitter_scale = 0.0
         self.beta_densify_threshold = 0.0   # 0 = desactivado, >0 = umbral activado
         self.beta_densify_mode = "split_wide"  # o "split_narrow"
         # ---------------------------------------------------

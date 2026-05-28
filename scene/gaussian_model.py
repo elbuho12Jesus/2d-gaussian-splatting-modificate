@@ -606,11 +606,14 @@ class GaussianModel:
         reset_idx = torch.cat([dead_idx, src_idx]).unique()
         self._reset_optimizer_state(reset_idx)
 
-    def add_new_gs(self, cap_max, error_weight=0.0):
-        """Crece hasta cap_max copiando splats vivos (sin jitter posicional).
-        Las posiciones se perturban después en el paso de ruido MCMC en train.py.
+    def add_new_gs(self, cap_max, error_weight=0.0, jitter_scale=0.0):
+        """Crece hasta cap_max copiando splats vivos.
         Con error_weight>0, el muestreo de fuentes se sesga hacia splats de alto
         error de reconstrucción para sembrar nuevos splats cerca de zonas mal resueltas.
+        Con jitter_scale>0, los clones se desplazan en una dirección 3D aleatoria
+        con magnitud ∝ scale_src × jitter_scale × err_src — así un src en el BORDE
+        de un hueco puede sembrar el INTERIOR del hueco, no solo más borde.
+        El jitter solo se aplica si error_weight>0 (necesita la señal de error).
         """
         cur = self._xyz.shape[0]
         target = min(int(cap_max), int(math.ceil(1.05 * cur)))
@@ -618,9 +621,11 @@ class GaussianModel:
         if k <= 0:
             return
 
+        use_error = error_weight > 0.0
+        err = self._error_signal() if use_error else None
+
         probs = self.get_opacity.squeeze()
-        if error_weight > 0.0:
-            err = self._error_signal()
+        if use_error:
             probs = probs * (1.0 + error_weight * err)
         probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=1e-6)
         total = probs.sum()
@@ -636,6 +641,16 @@ class GaussianModel:
             new_opacity_raw = self.inverse_opacity_activation(new_alpha)
 
             new_xyz = self._xyz[src_idx].detach().clone()
+            if jitter_scale > 0.0 and use_error:
+                # Magnitud: scale del src (norma 2D del surfel = tamaño in-plane en world)
+                # × err_src (∈ [0, clip], media≈1) × jitter_scale (dial del usuario).
+                # Splats de alto error desplazan más, sembrando huecos; splats de
+                # bajo error (foreground bien resuelto) desplazan ~0 → clone normal.
+                src_scale = self.get_scaling[src_idx].norm(dim=-1, keepdim=True)
+                direction = torch.randn_like(new_xyz)
+                direction = direction / direction.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+                err_src = err[src_idx].unsqueeze(-1)
+                new_xyz = new_xyz + direction * src_scale * (jitter_scale * err_src)
             new_features_dc = self._features_dc[src_idx].detach().clone()
             new_features_rest = self._features_rest[src_idx].detach().clone()
             new_scaling = self._scaling[src_idx].detach().clone()
