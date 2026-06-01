@@ -1,0 +1,27 @@
+ => ERROR [ 7/10] RUN conda env create -f environment.yml                                                                                                                                                                                             22.6s
+------
+ > [ 7/10] RUN conda env create -f environment.yml:
+0.707 2 channel Terms of Service accepted
+0.708 Retrieving notices: done
+1.252 Channels:
+1.252  - conda-forge
+1.252  - defaults
+1.252 Platform: linux-64
+1.252 Collecting package metadata (repodata.json): done
+4.747 Solving environment: done
+5.143
+ done                                                ...
+15.21 Preparing transaction: done
+15.42 Verifying transaction: done
+17.38 Executing transaction: done
+19.99 Installing pip dependencies: - Pip subprocess error:
+21.57   error: subprocess-exited-with-error
+21.57
+21.57   × python setup.py egg_info did not run successfully.
+21.57   │ exit code: 1
+21.57   ╰─> [6 lines of output]
+21.57       Traceback (most recent call last):
+21.57         File "<string>", line 2, in <module>
+21.57         File "<pip-setuptools-caller>", line 34, in <module>
+21.57         File "/workspace/submodules/diff-surfel-rasterization/setup.py", line 13, in <module>
+

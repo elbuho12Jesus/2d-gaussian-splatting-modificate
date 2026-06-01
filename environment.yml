@@ -23,7 +23,8 @@ dependencies:
     - scikit-image==0.21.0
     - tqdm==4.66.2
     - trimesh==4.3.2
-    - submodules/diff-surfel-rasterization
-    - submodules/simple-knn
     - plyfile
     - opencv-python
+    # NOTA: diff-surfel-rasterization y simple-knn NO van aquí: su setup.py importa torch
+    # en fase de egg_info, antes de que pip instale torch. Se compilan en el Dockerfile
+    # (pasos pip install ./submodules/...) ya con torch presente.
