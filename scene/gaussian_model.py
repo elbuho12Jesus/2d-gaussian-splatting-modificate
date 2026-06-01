@@ -98,7 +98,15 @@ class GaussianModel:
 
     @property
     def get_scaling(self):
-        return self.scaling_activation(self._scaling) #.clamp(max=1)
+        # Techo de escala atado a la extensión de la escena (convención 3DGS/2DGS:
+        # un splat > 0.1*extent es degenerado). Sin esto, un surfel puede crecer sin
+        # límite, cubrir miles de tiles y desbordar el buffer de binning del rasterizer
+        # (OOM con asignaciones absurdas tipo "1050571 GiB"). El clamp recorta el grad
+        # por encima del tope, así el optimizer deja de inflarlos.
+        s = self.scaling_activation(self._scaling)
+        if self.spatial_lr_scale > 0:
+            s = s.clamp(max=0.1 * self.spatial_lr_scale)
+        return s
     
     @property
     def get_rotation(self):
