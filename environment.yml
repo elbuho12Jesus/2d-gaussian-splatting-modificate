@@ -1,19 +1,22 @@
 name: surfel_splatting_modificate
 channels:
-  - pytorch
-  - nvidia
   - conda-forge
   - defaults
 dependencies:
   - ffmpeg=4.2.2
   - pillow=10.2.0
   - pip=23.3.1
-  - python=3.8.18
-  - pytorch=2.0.0
-  - torchaudio=2.0.0
-  - torchvision=0.15.0
+  - python=3.10
   - typing_extensions=4.9.0
   - pip:
+    # PyTorch con CUDA 12.8 (soporte Blackwell sm_120). --index-url fuerza los wheels cu128;
+    # --extra-index-url deja que el resto de paquetes salgan de PyPI.
+    - --index-url https://download.pytorch.org/whl/cu128
+    - --extra-index-url https://pypi.org/simple
+    - torch==2.7.1
+    - torchvision==0.22.1
+    - torchaudio==2.7.1
+    - numpy<2
     - open3d==0.18.0
     - mediapy==1.1.2
     - lpips==0.1.4

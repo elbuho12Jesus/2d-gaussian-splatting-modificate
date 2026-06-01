@@ -1,5 +1,6 @@
 # Utilizamos una imagen base de NVIDIA con CUDA Toolkit para poder compilar las extensiones
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+# CUDA 12.8: primera versión con soporte para Blackwell (sm_120, RTX PRO 6000)
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 # Evitar prompts interactivos durante la instalación de paquetes de sistema
 ENV DEBIAN_FRONTEND=noninteractive
@@ -28,8 +29,8 @@ COPY . /workspace/
 
 # Definir variables de entorno para la compilación de CUDA
 ENV CUDA_HOME=/usr/local/cuda
-# Compilar para las arquitecturas de GPU más comunes (Turing, Ampere, Ada, Hopper)
-ENV TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;8.9;9.0"
+# Compilar para Ampere, Ada, Hopper y Blackwell (sm_120). 12.0 = RTX PRO 6000 Blackwell
+ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 
 # Aceptar los Términos de Servicio de Anaconda para uso desatendido
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
