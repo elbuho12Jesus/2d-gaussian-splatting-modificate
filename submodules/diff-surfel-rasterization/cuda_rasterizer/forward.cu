@@ -234,6 +234,16 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		radius = ceil(max(max(extent.x, extent.y), cutoff * FilterSize));
 	}
 
+	// Guard contra proyecciones degeneradas: un surfel con radio no-finito (Inf/NaN)
+	// o cuya huella en pantalla excede la imagen entera es degenerado (suele venir de
+	// splats sembrados por opacity_reset/jitter que caen casi sobre la camara). Sin este
+	// corte, tiles_touched se vuelve basura (underflow uint en rect_max-rect_min) y
+	// num_rendered desborda int32 -> el buffer de binning se dimensiona con un valor
+	// absurdo y revienta con OOM imposibles tipo "1050585 GiB". Se descarta el splat
+	// (radii/tiles_touched ya estan en 0).
+	if (!isfinite(radius) || radius > (float)max(W, H))
+		return;
+
 	uint2 rect_min, rect_max;
 	getRect(point_image, radius, rect_min, rect_max, grid);
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
