@@ -40,13 +40,13 @@ RUN conda env create -f environment.yml
 
 # Activar el entorno e instalar las extensiones de CUDA manualmente
 # Usar la ruta absoluta del pip del entorno
-RUN /root/miniconda3/envs/surfel_splatting/bin/pip install ./submodules/simple-knn
-RUN /root/miniconda3/envs/surfel_splatting/bin/pip install ./submodules/diff-surfel-rasterization
+RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/simple-knn
+RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/diff-surfel-rasterization
 
 # Configurar el contenedor para que active automáticamente el entorno
-RUN echo "conda activate surfel_splatting" >> ~/.bashrc
+RUN echo "conda activate surfel_splatting_modificate" >> ~/.bashrc
 SHELL ["/bin/bash", "--login", "-c"]
 
-ENV PATH=/root/miniconda3/envs/surfel_splatting/bin:$PATH
+ENV PATH=/root/miniconda3/envs/surfel_splatting_modificate/bin:$PATH
 
 CMD ["/bin/bash"]
