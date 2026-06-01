@@ -1,27 +1,168 @@
- => ERROR [ 7/10] RUN conda env create -f environment.yml                                                                                                                                                                                             22.6s
-------
- > [ 7/10] RUN conda env create -f environment.yml:
-0.707 2 channel Terms of Service accepted
-0.708 Retrieving notices: done
-1.252 Channels:
-1.252  - conda-forge
-1.252  - defaults
-1.252 Platform: linux-64
-1.252 Collecting package metadata (repodata.json): done
-4.747 Solving environment: done
-5.143
- done                                                ...
-15.21 Preparing transaction: done
-15.42 Verifying transaction: done
-17.38 Executing transaction: done
-19.99 Installing pip dependencies: - Pip subprocess error:
-21.57   error: subprocess-exited-with-error
-21.57
-21.57   × python setup.py egg_info did not run successfully.
-21.57   │ exit code: 1
-21.57   ╰─> [6 lines of output]
-21.57       Traceback (most recent call last):
-21.57         File "<string>", line 2, in <module>
-21.57         File "<pip-setuptools-caller>", line 34, in <module>
-21.57         File "/workspace/submodules/diff-surfel-rasterization/setup.py", line 13, in <module>
-
+ => ERROR [ 8/10] RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/simple-knn                                                                                                                                       92.6s␍
+------␍
+ > [ 8/10] RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/simple-knn:␍
+1.033 Processing ./submodules/simple-knn␍
+1.034   Preparing metadata (setup.py): started␍
+2.686   Preparing metadata (setup.py): finished with status 'done'␍
+2.691 Building wheels for collected packages: simple_knn␍
+2.692   Building wheel for simple_knn (setup.py): started␍
+90.60   Building wheel for simple_knn (setup.py): still running...␍
+90.89   Building wheel for simple_knn (setup.py): finished with status 'error'␍
+90.90   error: subprocess-exited-with-error␍
+90.90␍
+90.90   × python setup.py bdist_wheel did not run successfully.␍
+90.90   │ exit code: 1␍
+90.90   ╰─> [126 lines of output]␍
+90.90       No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'␍
+90.90       running bdist_wheel␍
+90.90       running build␍
+90.90       running build_ext␍
+90.90       /root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py:490: UserWarning: There are no g++ version bounds defined for CUDA version 12.8␍
+90.90         warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')␍
+90.90       building 'simple_knn._C' extension␍
+90.90       creating /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310␍
+90.90       Emitting ninja build file /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/build.ninja...␍
+90.90       Compiling objects...␍
+90.90       Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)␍
+90.90       [1/3] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o.d -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/usr/local/cuda/include -I/root/miniconda3/envs/surfel_splatting_modificate/include/python3.10 -c -c /workspace/submodules/simple-knn/simple_knn.cu -o /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1016"' -DTORCH_EXTENSION_NAME=_C -D_GLIBCXX_USE_CXX11_ABI=1 -gencode=arch=compute_120,code=sm_120 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -std=c++17␍
+90.90       FAILED: /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o␍
+90.90       /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o.d -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/usr/local/cuda/include -I/root/miniconda3/envs/surfel_splatting_modificate/include/python3.10 -c -c /workspace/submodules/simple-knn/simple_knn.cu -o /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1016"' -DTORCH_EXTENSION_NAME=_C -D_GLIBCXX_USE_CXX11_ABI=1 -gencode=arch=compute_120,code=sm_120 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -std=c++17␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu:23: warning: "__CUDACC__" redefined␍
+90.90          23 | #define __CUDACC__␍
+90.90             |␍
+90.90       <command-line>: note: this is the location of the previous definition␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu(90): error: identifier "FLT_MAX" is undefined␍
+90.90           me.minn = { FLT_MAX, FLT_MAX, FLT_MAX };␍
+90.90                       ^␍
+90.90␍
+90.90       /workspace/submodules/simple-knn/simple_knn.cu(154): error: identifier "FLT_MAX" is undefined␍
+90.90          float best[3] = { FLT_MAX, FLT_MAX, FLT_MAX };␍
+90.90                            ^␍
+90.90␍
+90.90       2 errors detected in the compilation of "/workspace/submodules/simple-knn/simple_knn.cu".␍
+90.90       [2/3] c++ -MMD -MF /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/ext.o.d -pthread -B /root/miniconda3/envs/surfel_splatting_modificate/compiler_compat -Wno-unused-result -Wsign-compare -DNDEBUG -fwrapv -O2 -Wall -fPIC -O2 -isystem /root/miniconda3/envs/surfel_splatting_modificate/include -fPIC -O2 -isystem /root/miniconda3/envs/surfel_splatting_modificate/include -fPIC -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/usr/local/cuda/include -I/root/miniconda3/envs/surfel_splatting_modificate/include/python3.10 -c -c /workspace/submodules/simple-knn/ext.cpp -o /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/ext.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1016"' -DTORCH_EXTENSION_NAME=_C -D_GLIBCXX_USE_CXX11_ABI=1 -std=c++17␍
+90.90       [3/3] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/spatial.o.d -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include -I/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/usr/local/cuda/include -I/root/miniconda3/envs/surfel_splatting_modificate/include/python3.10 -c -c /workspace/submodules/simple-knn/spatial.cu -o /workspace/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/spatial.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1016"' -DTORCH_EXTENSION_NAME=_C -D_GLIBCXX_USE_CXX11_ABI=1 -gencode=arch=compute_120,code=sm_120 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -std=c++17␍
+90.90       /workspace/submodules/simple-knn/spatial.cu: In function ‘at::Tensor distCUDA2(const at::Tensor&)’:␍
+90.90       /workspace/submodules/simple-knn/spatial.cu:23:64: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]␍
+90.90          23 |   SimpleKNN::knn(P, (float3*)points.contiguous().data<float>(), means.contiguous().data<float>());␍
+90.90             |                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~␍
+90.90       /root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:1: note: declared here␍
+90.90         247 |   T * data() const {␍
+90.90             | ^ ~~␍
+90.90       /workspace/submodules/simple-knn/spatial.cu:23:102: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]␍
+90.90          23 |   SimpleKNN::knn(P, (float3*)points.contiguous().data<float>(), means.contiguous().data<float>());␍
+90.90             |                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   ^␍
+90.90       /root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:1: note: declared here␍
+90.90         247 |   T * data() const {␍
+90.90             | ^ ~~␍
+90.90       ninja: build stopped: subcommand failed.␍
+90.90       Traceback (most recent call last):␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 2506, in _run_ninja_build␍
+90.90           subprocess.run(␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/subprocess.py", line 526, in run␍
+90.90           raise CalledProcessError(retcode, process.args,␍
+90.90       subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 1.␍
+90.90␍
+90.90       The above exception was the direct cause of the following exception:␍
+90.90␍
+90.90       Traceback (most recent call last):␍
+90.90         File "<string>", line 2, in <module>␍
+90.90         File "<pip-setuptools-caller>", line 34, in <module>␍
+90.90         File "/workspace/submodules/simple-knn/setup.py", line 21, in <module>␍
+90.90           setup(␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/__init__.py", line 117, in setup␍
+90.90           return distutils.core.setup(**attrs)  # type: ignore[return-value]␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/core.py", line 186, in setup␍
+90.90           return run_commands(dist)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/core.py", line 202, in run_commands␍
+90.90           dist.run_commands()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/dist.py", line 1000, in run_commands␍
+90.90           self.run_command(cmd)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/dist.py", line 1107, in run_command␍
+90.90           super().run_command(command)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command␍
+90.90           cmd_obj.run()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/command/bdist_wheel.py", line 370, in run␍
+90.90           self.run_command("build")␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/cmd.py", line 341, in run_command␍
+90.90           self.distribution.run_command(command)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/dist.py", line 1107, in run_command␍
+90.90           super().run_command(command)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command␍
+90.90           cmd_obj.run()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/command/build.py", line 135, in run␍
+90.90           self.run_command(cmd_name)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/cmd.py", line 341, in run_command␍
+90.90           self.distribution.run_command(command)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/dist.py", line 1107, in run_command␍
+90.90           super().run_command(command)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command␍
+90.90           cmd_obj.run()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/command/build_ext.py", line 97, in run␍
+90.90           _build_ext.run(self)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/command/build_ext.py", line 367, in run␍
+90.90           self.build_extensions()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 1010, in build_extensions␍
+90.90           build_ext.build_extensions(self)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/command/build_ext.py", line 483, in build_extensions␍
+90.90           self._build_extensions_serial()␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/command/build_ext.py", line 509, in _build_extensions_serial␍
+90.90           self.build_extension(ext)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/command/build_ext.py", line 262, in build_extension␍
+90.90           _build_ext.build_extension(self, ext)␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/setuptools/_distutils/command/build_ext.py", line 564, in build_extension␍
+90.90           objects = self.compiler.compile(␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 815, in unix_wrap_ninja_compile␍
+90.90           _write_ninja_file_and_compile_objects(␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 2159, in _write_ninja_file_and_compile_objects␍
+90.90           _run_ninja_build(␍
+90.90         File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 2522, in _run_ninja_build␍
+90.90           raise RuntimeError(message) from e␍
+90.90       RuntimeError: Error compiling objects for extension␍
+90.90       [end of output]␍
+90.90␍
+90.90   note: This error originates from a subprocess, and is likely not a problem with pip.␍
+90.90   ERROR: Failed building wheel for simple_knn␍
+90.90   Running setup.py clean for simple_knn␍
+92.53 Failed to build simple_knn␍
+92.53 ERROR: Could not build wheels for simple_knn, which is required to install pyproject.toml-based projects␍
+------␍
+[+] build 0/1␍
+ ⠙ Image surfel_splatting_image Building                                                                                                                                                                                                              318.2s␍
+Dockerfile:44␍
+␍
+--------------------␍
+␍
+  42 |     # Activar el entorno e instalar las extensiones de CUDA manualmente␍
+␍
+  43 |     # Usar la ruta absoluta del pip del entorno␍
+␍
+  44 | >>> RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/simple-knn␍
+␍
+  45 |     RUN /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/diff-surfel-rasterization␍
+␍
+  46 |␍
+␍
+--------------------␍
+␍
+failed to solve: process "/bin/sh -c /root/miniconda3/envs/surfel_splatting_modificate/bin/pip install ./submodules/simple-knn" did not complete successfully: exit code: 1
