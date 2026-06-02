@@ -16,7 +16,7 @@ from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
-from utils.general_utils import safe_state
+from utils.general_utils import safe_state, build_rotation
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr, render_net_image
@@ -171,16 +171,29 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     gaussians.relocate_gs(dead_mask=dead_mask, error_weight=opt.mcmc_error_weight)
                     gaussians.add_new_gs(cap_max=opt.cap_max, error_weight=opt.mcmc_error_weight, jitter_scale=opt.mcmc_jitter_scale)
 
-                    # Ruido posicional MCMC. Covariance-shaped noise desactivado:
-                    # diff-surfel-rasterization usa scales 2D pero build_scaling_rotation
-                    # accede a s[:,2] → IndexError silencioso en la versión anterior.
-                    # Aplicamos solo ruido isotrópico, suficiente para perturbar splats
-                    # casi muertos (con (1-op)^100 ≈ 1) sin tocar los útiles.
+                    # Ruido posicional MCMC. Dos modos:
+                    #  - isotrópico (default): randn esférico, ignora la forma del splat.
+                    #  - híbrido covarianza (opt.cov_noise): anisotropía en el PLANO del
+                    #    surfel (las 2 escalas) + isotrópico en la NORMAL. No usamos
+                    #    build_scaling_rotation (accede a s[:,2] → IndexError con scales 2D);
+                    #    construimos R con build_rotation y aplicamos un std local de 3 ejes.
+                    #    OJO magnitudes: usamos pesos de anisotropía NORMALIZADOS a media 1
+                    #    (no s² crudo, que es ~1e-4 y descuadraría noise_lr congelando el
+                    #    plano); así noise_lr sigue calibrado. Ver docs/ruido_isotropico_*.
                     with torch.no_grad():
                         noise_exp = float(getattr(opt, "noise_opacity_exponent", 100.0))
                         noise_lr = float(getattr(opt, "noise_lr", 5e5))
                         base_noise = torch.randn_like(gaussians._xyz)
                         noise_mult = torch.pow(1.0 - gaussians.get_opacity, noise_exp)
+                        if bool(getattr(opt, "cov_noise", False)):
+                            s = gaussians.get_scaling                                  # (N,2) ejes del plano
+                            w = s / s.mean(dim=1, keepdim=True).clamp_min(1e-8)        # anisotropía, media 1
+                            pad = float(getattr(opt, "cov_noise_normal", 1.0))         # 0 = confinado al plano
+                            local_std = torch.cat(
+                                [w, torch.full_like(s[:, :1], pad)], dim=1)            # (N,3): [u, v, normal]
+                            R = build_rotation(gaussians.get_rotation)                 # (N,3,3), col 2 = normal
+                            base_noise = torch.bmm(
+                                R, (local_std * base_noise).unsqueeze(-1)).squeeze(-1) # moldea y rota al mundo
                         noise = base_noise * noise_mult * noise_lr * float(xyz_lr)
                         gaussians._xyz.add_(noise)
 

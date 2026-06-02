@@ -121,6 +121,14 @@ class OptimizationParams(ParamGroup):
         self.mcmc_jitter_scale = 0.0
         self.beta_densify_threshold = 0.0   # 0 = desactivado, >0 = umbral activado
         self.beta_densify_mode = "split_wide"  # o "split_narrow"
+        # --- Ruido posicional híbrido por covarianza (surfel 2D) ---
+        # False = ruido isotrópico (default). True = anisotropía moldeada por las 2
+        # escalas EN EL PLANO del surfel + isotrópico en la normal (ver bloque de ruido
+        # en train.py y docs/ruido_isotropico_vs_covarianza.html, secciones 5/8).
+        self.cov_noise = False
+        # Escala isotrópica de la componente normal del ruido híbrido. 1.0 = la normal
+        # explora a la tasa media del plano; 0.0 = ruido CONFINADO al plano (rango 2).
+        self.cov_noise_normal = 1.0
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

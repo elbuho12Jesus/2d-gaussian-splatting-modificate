@@ -14,4 +14,6 @@ python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/bon
     --opacity_cull 0.005 \
     --mcmc_error_weight 2.0 \
     --mcmc_jitter_scale 1.5 \
+    --cov_noise \
+    --cov_noise_normal 1.0 \
     2>&1 | tee logs/bonsai4.log
