@@ -143,7 +143,70 @@ _xyz.add_(noise)</code></pre>
   </defs>
 </svg>
 
-<h2>4. Comparación directa</h2>
+<h2>4. La covarianza de <i>nuestro</i> surfel 2D</h2>
+<div class="card">
+<p>Hasta aquí Σ era la del oficial (elipsoide 3D). Pero, ¿cómo es Σ para el surfel 2D con el que trabajamos? Un surfel es una gaussiana <b>2D</b> que vive en un <b>plano tangente</b>. De su rotación <code>R = [ t<sub>u</sub> | t<sub>v</sub> | t<sub>w</sub> ]</code> salen dos ejes <b>en el plano</b> (<code>t<sub>u</sub>, t<sub>v</sub></code>) y la <b>normal</b> <code>t<sub>w</sub></code>. Pero las escalas son solo <b>dos</b>: <code>s = (s<sub>u</sub>, s<sub>v</sub>)</code> — esa es la raíz de todo.</p>
+
+<p><b>En el plano del surfel</b> (base local <i>u,v</i>) la covarianza es una matriz <b>2×2</b> diagonal:</p>
+<div class="eq">Σ<sub>2D</sub> = diag(s<sub>u</sub>², s<sub>v</sub>²) &nbsp;&nbsp;(2×2)</div>
+
+<p><b>Embebida en 3D</b> —que es lo que <code>cov @ noise</code> necesitaría— esa misma covarianza es una matriz <b>3×3 de rango 2</b>: idéntica al elipsoide oficial pero con el <b>tercer grosor colapsado a cero</b> sobre la normal.</p>
+<div class="eq">Σ<sub>3D</sub> = R · diag(s<sub>u</sub>², s<sub>v</sub>², <span class="hl">0</span>) · Rᵀ = s<sub>u</sub>² t<sub>u</sub>t<sub>u</sub>ᵀ + s<sub>v</sub>² t<sub>v</sub>t<sub>v</sub>ᵀ</div>
+
+<ul>
+  <li><b>Autovectores:</b> los dos ejes del plano <code>t<sub>u</sub>, t<sub>v</sub></code>, más la normal <code>t<sub>w</sub></code>.</li>
+  <li><b>Autovalores:</b> <code>s<sub>u</sub>²</code> y <code>s<sub>v</sub>²</code> en el plano, y <span class="hl">λ<sub>w</sub> = 0</span> sobre la normal. El surfel es un elipsoide <b>infinitamente fino</b>: una oblea sin grosor.</li>
+</ul>
+<p class="note">Compara con el oficial 3D, <code>diag(s₁², s₂², s₃²)</code>: rango 3, tres grosores no nulos. El surfel es ese mismo objeto con el tercer grosor = 0. Por eso <code>build_scaling_rotation(get_scaling, …)</code> rompe con <span class="hl">IndexError</span> al pedir <code>s[:,2]</code> (sección 6): no es que «falte» la tercera escala, es que <b>vale 0 por construcción</b> y nadie la materializa.</p>
+</div>
+
+<svg viewBox="0 0 920 290" role="img" aria-label="Covarianza del surfel 2D: matriz 2x2 en el plano y matriz 3x3 de rango 2 embebida en 3D">
+  <rect x="0" y="0" width="920" height="290" fill="#0b0d13" rx="10"/>
+
+  <!-- IZQUIERDA: en el plano (2x2) -->
+  <text x="230" y="30" fill="#6ea8fe" font-size="15" text-anchor="middle" font-weight="bold">En su plano — Σ₂D (2×2)</text>
+  <g transform="translate(230,165) rotate(-18)">
+    <ellipse cx="0" cy="0" rx="120" ry="48" fill="#6ea8fe" opacity="0.25" stroke="#6ea8fe"/>
+    <line x1="0" y1="0" x2="118" y2="0" stroke="#7ee787" stroke-width="2.5" marker-end="url(#arU)"/>
+    <line x1="0" y1="0" x2="0" y2="46" stroke="#ffb454" stroke-width="2.5" marker-end="url(#arV)"/>
+  </g>
+  <text x="352" y="124" fill="#7ee787" font-size="13" font-weight="bold">s&#8341; &nbsp;(λ=s&#8341;²)</text>
+  <text x="250" y="225" fill="#ffb454" font-size="13" font-weight="bold">s&#7515; (λ=s&#7515;²)</text>
+  <text x="230" y="268" fill="#9aa3b2" font-size="12" text-anchor="middle">dos autovalores no nulos en el plano</text>
+
+  <!-- DERECHA: embebida en 3D, rango 2 -->
+  <text x="690" y="30" fill="#7ee787" font-size="15" text-anchor="middle" font-weight="bold">Embebida en 3D — rango 2</text>
+  <!-- disco visto en escorzo -->
+  <ellipse cx="690" cy="185" rx="120" ry="26" fill="#6ea8fe" opacity="0.25" stroke="#6ea8fe"/>
+  <!-- ejes en el plano -->
+  <line x1="690" y1="185" x2="800" y2="185" stroke="#7ee787" stroke-width="2.5" marker-end="url(#arU)"/>
+  <line x1="690" y1="185" x2="660" y2="205" stroke="#ffb454" stroke-width="2.5" marker-end="url(#arV)"/>
+  <!-- normal perpendicular, lambda = 0 -->
+  <line x1="690" y1="185" x2="690" y2="78" stroke="#ff7b72" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#arN)"/>
+  <text x="700" y="74" fill="#ff7b72" font-size="13" font-weight="bold">t&#7637; &nbsp;λ&#7637; = 0</text>
+  <text x="700" y="92" fill="#ff7b72" font-size="11">(sin grosor)</text>
+  <text x="813" y="190" fill="#7ee787" font-size="13" font-weight="bold">s&#8341;</text>
+  <text x="618" y="218" fill="#ffb454" font-size="13" font-weight="bold">s&#7515;</text>
+  <text x="690" y="268" fill="#9aa3b2" font-size="12" text-anchor="middle">el tercer autovalor es exactamente 0 → oblea plana</text>
+
+  <defs>
+    <marker id="arU" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7ee787"/></marker>
+    <marker id="arV" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ffb454"/></marker>
+    <marker id="arN" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ff7b72"/></marker>
+  </defs>
+</svg>
+
+<div class="card card2">
+<h3>Qué le haría esto al ruido <code>cov @ noise</code></h3>
+<p>Toma un surfel alargado, <code>s = (0.08, 0.02)</code>. Su Σ<sub>3D</sub> tiene autovalores <code>(0.0064, 0.0004, 0)</code>. Al proyectar el ruido isótropo <code>n</code> con <code>Σ<sub>3D</sub> · n</code>, cada componente se escala por su autovalor:</p>
+<div class="eq">en t<sub>u</sub>: × 0.0064 &nbsp;|&nbsp; en t<sub>v</sub>: × 0.0004 &nbsp;|&nbsp; en t<sub>w</sub>: <span class="hl">× 0 → se anula</span></div>
+<p>El ruido queda <b>aplastado dentro del plano del surfel</b>: se desliza sobre la superficie y <b>nunca</b> empuja en la dirección perpendicular. Es el caso <b>extremo</b> del elipsoide de la sección 3 — como el grosor normal es exactamente 0, un <code>Σ @ noise</code> en surfels <b>jamás</b> podría saltar a un hueco perpendicular vacío.</p>
+<p class="note danger-box">Para <i>nuestros</i> huecos negros esto sería <b>justo lo contrario</b> de lo deseable: confinaría todo el movimiento a las superficies ya existentes. El ruido <b>isotrópico</b>, que sí tiene componente perpendicular, es el único que puede sembrar el volumen vacío (sección 7). Otra razón por la que en surfels 2D el isotrópico no es un mero «parche», sino que puede ser <b>preferible</b>.</p>
+</div>
+
+<div class="note">⚠️ No confundir con la <b>otra</b> covarianza del surfel: la <b>2×2 en pantalla</b> (<code>Σ' = J Σ Jᵀ</code> tras proyectar), que el rasterizer usa para calcular el <i>footprint</i> y el radio en píxeles. Esa gobierna cuántos <i>tiles</i> toca el splat (y por tanto el coste de binning de <code>docs/clamp_radio_y_techo_rasterizer.html</code>); la de aquí, Σ<sub>3D</sub> en espacio-objeto, es la que importa para el ruido posicional.</div>
+
+<h2>5. Comparación directa</h2>
 <table>
 <tr><th>Aspecto</th><th>Isotrópico (este repo)</th><th>Covarianza (oficial)</th></tr>
 <tr><td>Dirección del empuje</td><td>Uniforme (esfera), aleatoria</td><td>A lo largo de los ejes del splat (elipsoide)</td></tr>
@@ -154,13 +217,13 @@ _xyz.add_(noise)</code></pre>
 <tr><td>Coste</td><td>Una multiplicación</td><td>Construir Σ (N×3×3) + bmm por iter de densify</td></tr>
 </table>
 
-<h2>5. Por qué este repo lo desactivó</h2>
+<h2>6. Por qué este repo lo desactivó</h2>
 <div class="card warn-box">
 <p>El oficial usa <b>elipsoides 3D</b>: <code>get_scaling</code> tiene <b>3 componentes</b>, y <code>build_scaling_rotation</code> construye una <code>diag(s)</code> 3×3 sin problema.</p>
 <p>Este repo usa <b>surfels 2D</b> (rasterizer <code>diff-surfel</code>): <code>get_scaling</code> tiene solo <b>2 componentes</b>. La función <code>build_scaling_rotation(get_scaling, …)</code> intenta acceder a <code>s[:,2]</code> → <span class="hl">IndexError</span>. En versiones anteriores ese error quedaba <i>tragado</i> por un <code>try/except</code> silencioso, así que el ruido "por covarianza" <b>nunca se ejecutaba</b> realmente. Al limpiarlo se dejó explícitamente el ruido <b>isotrópico</b>, que sí es compatible con 2 escalas.</p>
 </div>
 
-<h2>6. Implicaciones y cómo se reactivaría</h2>
+<h2>7. Implicaciones y cómo se reactivaría</h2>
 <div class="card">
 <p><b>Para tus huecos negros</b>, el isotrópico no es necesariamente peor: empujar en cualquier dirección (incluida la perpendicular al plano) ayuda a sembrar volumen 3D vacío. El precio es que puede sacar surfels de la superficie que deberían representar (ruido/floaters).</p>
 <p>El de covarianza es más <b>coherente con la geometría</b> y acopla el empuje al tamaño del splat (los grandes exploran regiones grandes), pero por sí solo no salta tan fácil a un hueco perpendicular.</p>
