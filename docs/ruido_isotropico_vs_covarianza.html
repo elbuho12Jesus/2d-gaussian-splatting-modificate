@@ -229,7 +229,84 @@ _xyz.add_(noise)</code></pre>
 <p>El de covarianza es más <b>coherente con la geometría</b> y acopla el empuje al tamaño del splat (los grandes exploran regiones grandes), pero por sí solo no salta tan fácil a un hueco perpendicular.</p>
 <p class="note ok-box"><b>Para reactivar un moldeado por covarianza en surfels 2D</b> haría falta una de estas dos vías:
 <br>1. Adaptar <code>build_scaling_rotation</code> a <b>2 escalas</b> (Σ en el plano del surfel: el ruido se deslizaría sobre la superficie, sin componente perpendicular).
-<br>2. Migrar a <b>gsplat / primitiva 3D</b>, donde Σ es naturalmente 3×3 y el ruido del oficial funciona tal cual.</p>
+<br>2. Migrar a <b>gsplat / primitiva 3D</b>, donde Σ es naturalmente 3×3 y el ruido del oficial funciona tal cual (<b>detallado en la sección 8</b>).</p>
+</div>
+
+<h2>8. Opción 2 en detalle: el ruido «que queremos» con primitiva 3D</h2>
+<div class="card">
+<p>Esta es la vía que <b>resuelve el problema de raíz</b>. Al cambiar el surfel 2D por un <b>elipsoide 3D</b> (lo que hace el oficial con <code>gsplat</code> + <code>beta_model.py</code>), <code>get_scaling</code> pasa a tener <b>3 componentes</b>, y la covarianza es una <b>3×3 de rango completo</b>:</p>
+<div class="eq">Σ = R · diag(s<sub>1</sub>², s<sub>2</sub>², s<sub>3</sub>²) · Rᵀ &nbsp;&nbsp; con <span class="hl2">s<sub>1</sub>², s<sub>2</sub>², s<sub>3</sub>² &gt; 0</span> (rango 3)</div>
+<p>El código del oficial corre <b>tal cual</b> —ya no hay <code>s[:,2]</code> que falle, ni <code>try/except</code> que lo trague:</p>
+<pre><code>L   = build_scaling_rotation(get_scaling, get_rotation)   <span style="color:#8b949e"># 3 escalas → diag 3×3</span>
+cov = L @ L.transpose(1,2)                                 <span style="color:#8b949e"># Σ = L Lᵀ, rango 3</span>
+noise = randn_like(_xyz) * (1 - get_opacity)**100 * noise_lr * xyz_lr
+noise = bmm(cov, noise)                                    <span style="color:#7ee787"># Σ · n → empuje en TODO el volumen</span>
+_xyz.add_(noise)</code></pre>
+
+<p class="note ok-box"><b>La diferencia clave con el surfel (sección 4):</b> aquí <b>no hay ningún autovalor cero</b>. En el surfel, <code>λ<sub>w</sub> = 0</code> aplastaba el ruido contra el plano; en el elipsoide 3D los tres autovalores son positivos, así que <code>Σ · n</code> tiene componente <b>en las tres direcciones</b>. El ruido sigue <b>moldeado por la geometría</b> (estirado hacia los ejes grandes, escalado por el tamaño del splat) pero <b>ya no queda confinado</b>: puede saltar al volumen vacío.</p>
+
+<p>Por eso es «el ruido que queremos» para los huecos: combina lo mejor de ambos mundos de la sección 7 —</p>
+<ul>
+  <li><b>Explora volumen 3D</b> (como el isotrópico) → puede sembrar fondos vacíos (césped/cielo/pared).</li>
+  <li><b>Acoplado al tamaño</b> (como el de covarianza) → los splats grandes que modelan esos fondos exploran <b>regiones grandes</b>, justo donde aparecen los huecos.</li>
+  <li>Sin sacar surfels de su superficie, porque ya no son surfels: el elipsoide tiene grosor real en las tres direcciones.</li>
+</ul>
+</div>
+
+<svg viewBox="0 0 920 270" role="img" aria-label="Ruido confinado al plano en el surfel 2D frente a ruido en todo el volumen en el elipsoide 3D">
+  <rect x="0" y="0" width="920" height="270" fill="#0b0d13" rx="10"/>
+
+  <!-- IZQUIERDA: surfel, ruido atrapado -->
+  <text x="230" y="30" fill="#ff7b72" font-size="15" text-anchor="middle" font-weight="bold">Surfel 2D — ruido atrapado en el plano</text>
+  <g transform="translate(230,150) rotate(-18)">
+    <ellipse cx="0" cy="0" rx="110" ry="20" fill="#6ea8fe" opacity="0.28" stroke="#6ea8fe"/>
+    <ellipse cx="0" cy="0" rx="128" ry="12" fill="none" stroke="#7ee787" stroke-dasharray="5 4"/>
+    <g stroke="#7ee787" stroke-width="2" marker-end="url(#arVol2)">
+      <line x1="0" y1="0" x2="120" y2="0"/>
+      <line x1="0" y1="0" x2="-120" y2="0"/>
+    </g>
+  </g>
+  <!-- intento perpendicular bloqueado -->
+  <line x1="230" y1="150" x2="230" y2="92" stroke="#ff7b72" stroke-width="2" stroke-dasharray="3 4"/>
+  <text x="230" y="84" fill="#ff7b72" font-size="20" text-anchor="middle" font-weight="bold">&#10005;</text>
+  <text x="230" y="248" fill="#9aa3b2" font-size="12" text-anchor="middle">λ&#7637;=0 bloquea la perpendicular → no llena huecos</text>
+
+  <!-- DERECHA: elipsoide 3D, ruido en volumen -->
+  <text x="690" y="30" fill="#7ee787" font-size="15" text-anchor="middle" font-weight="bold">Elipsoide 3D — ruido en todo el volumen</text>
+  <!-- elipsoide con cue 3D -->
+  <ellipse cx="690" cy="150" rx="62" ry="46" fill="#6ea8fe" opacity="0.28" stroke="#6ea8fe"/>
+  <ellipse cx="690" cy="150" rx="62" ry="16" fill="none" stroke="#6ea8fe" opacity="0.45" stroke-dasharray="3 3"/>
+  <!-- nube de ruido elipsoidal -->
+  <ellipse cx="690" cy="150" rx="92" ry="70" fill="none" stroke="#7ee787" stroke-dasharray="5 4"/>
+  <!-- flechas en todas direcciones -->
+  <g stroke="#7ee787" stroke-width="2" marker-end="url(#arVol2)">
+    <line x1="690" y1="150" x2="690" y2="86"/>
+    <line x1="690" y1="150" x2="690" y2="214"/>
+    <line x1="690" y1="150" x2="778" y2="150"/>
+    <line x1="690" y1="150" x2="602" y2="150"/>
+    <line x1="690" y1="150" x2="752" y2="104"/>
+    <line x1="690" y1="150" x2="628" y2="196"/>
+    <line x1="690" y1="150" x2="752" y2="196"/>
+    <line x1="690" y1="150" x2="628" y2="104"/>
+  </g>
+  <text x="690" y="248" fill="#9aa3b2" font-size="12" text-anchor="middle">s₁²,s₂²,s₃² &gt; 0 → empuje en las 3 direcciones, sesgado al tamaño</text>
+
+  <defs>
+    <marker id="arVol2" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7ee787"/></marker>
+  </defs>
+</svg>
+
+<div class="card warn-box">
+<h3>El precio: es la palanca más cara</h3>
+<p>«Funciona tal cual» se refiere <b>solo al bloque de ruido</b>. Migrar a primitiva 3D es un cambio <b>arquitectónico completo</b>, no una línea:</p>
+<table>
+<tr><th>Qué se cambia</th><th>Hoy (este repo)</th><th>Tras migrar</th></tr>
+<tr><td>Rasterizer</td><td><code>diff-surfel-rasterization</code></td><td><code>gsplat</code> (recompilar)</td></tr>
+<tr><td>Primitiva / modelo</td><td>surfel 2D (<code>gaussian_model.py</code>)</td><td>elipsoide 3D (<code>beta_model.py</code>)</td></tr>
+<tr><td>Regularizadores de superficie</td><td><code>lambda_dist</code>, <code>lambda_normal</code>, <code>surf_normal</code></td><td>se pierden (no hay plano explícito)</td></tr>
+<tr><td>Ruido posicional</td><td>isotrópico</td><td><code>cov @ noise</code> oficial</td></tr>
+</table>
+<p>A favor: encaja con el aprendizaje recurrente del proyecto —<i>«la primitiva 2D es menos expresiva que el elipsoide 3D»</i>— y resolvería de raíz el ruido por covarianza <b>y</b> el techo de intersecciones del rasterizer. En contra: pierdes las normales/superficie explícitas que son la ventaja de 2DGS, y es el mayor esfuerzo de integración. Es la <b>opción de fondo</b> si subir <code>cap_max</code> y las Spherical Betas dejan de rendir.</p>
 </div>
 
 <p class="meta">Fuente oficial: <code>beta-splatting/train.py:146-155</code> y <code>utils/general_utils.build_scaling_rotation</code>. Este repo: <code>train.py</code> (bloque de ruido en el paso de densificación) — ruido isotrópico, <code>cov @ noise</code> desactivado por incompatibilidad con scales 2D.</p>
