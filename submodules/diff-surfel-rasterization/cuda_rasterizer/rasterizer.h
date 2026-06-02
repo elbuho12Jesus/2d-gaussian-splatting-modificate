@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <functional>
+#include <cstdint>
 
 namespace CudaRasterizer
 {
@@ -28,7 +29,10 @@ namespace CudaRasterizer
 			float* projmatrix,
 			bool* present);
 
-		static int forward(
+		// int64: el nº total de intersecciones splat×tile (R/num_rendered) puede
+		// pasar de 2^31 en escenas pesadas (cap alto, surfels grandes). Antes era
+		// int y desbordaba -> buffer de binning con tamaño absurdo -> OOM fantasma.
+		static int64_t forward(
 			std::function<char* (size_t)> geometryBuffer,
 			std::function<char* (size_t)> binningBuffer,
 			std::function<char* (size_t)> imageBuffer,
@@ -55,7 +59,7 @@ namespace CudaRasterizer
 			bool debug = false);
 
 		static void backward(
-			const int P, int D, int M, int R,
+			const int P, int D, int M, int64_t R,
 			const float* background,
 			const int width, int height,
 			const float* means3D,

@@ -38,8 +38,8 @@ namespace CudaRasterizer
 		float4* normal_opacity;
 		float* beta;
 		float* rgb;
-		uint32_t* point_offsets;
-		uint32_t* tiles_touched;
+		uint64_t* point_offsets;   // int64: suma acumulada de tiles; puede pasar de 2^31
+		uint64_t* tiles_touched;
 
 		static GeometryState fromChunk(char*& chunk, size_t P);
 	};

@@ -48,7 +48,7 @@ namespace FORWARD
 		float* colors,
 		float4* normal_opacity,
 		const dim3 grid,
-		uint32_t* tiles_touched,
+		uint64_t* tiles_touched,
 		bool prefiltered);
 
 	// Main rasterization method.

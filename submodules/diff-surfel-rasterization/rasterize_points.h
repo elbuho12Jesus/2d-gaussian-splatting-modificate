@@ -59,7 +59,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int degree,
 	const torch::Tensor& campos,
 	const torch::Tensor& geomBuffer,
-	const int R,
+	const int64_t R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
 	const bool debug);

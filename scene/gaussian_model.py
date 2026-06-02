@@ -593,8 +593,15 @@ class GaussianModel:
         src_idx = alive_idx[torch.multinomial(weights, n_dead, replacement=True)]
 
         with torch.no_grad():
+            # Regla de preservación de distribución (oficial beta_model._update_params):
+            # si un src se elige 'ratio' veces por multinomial, habrá ratio+1 instancias
+            # (las copias muertas reubicadas + el propio src). Cada una recibe
+            # new_alpha = 1-(1-alpha)^(1/(ratio+1)) para conservar la transmitancia total.
+            # (Antes: alpha/2, que solo es correcto si ratio==1 y sobre-infla la opacidad
+            # de los src populares -> sesga capacidad al foreground y desestabiliza.)
+            ratio = torch.bincount(src_idx)[src_idx].to(self._xyz.dtype).unsqueeze(-1)
             src_alpha = self.get_opacity[src_idx].clamp(min=2e-3, max=1.0 - 1e-3)
-            new_alpha = (src_alpha * 0.5).clamp(min=1e-3)
+            new_alpha = (1.0 - torch.pow(1.0 - src_alpha, 1.0 / (ratio + 1.0))).clamp(min=5e-3, max=1.0 - 1e-3)
             new_opacity_raw = self.inverse_opacity_activation(new_alpha)
 
             self._xyz[dead_idx] = self._xyz[src_idx]
@@ -644,8 +651,13 @@ class GaussianModel:
         src_idx = torch.multinomial(probs, k, replacement=True)
 
         with torch.no_grad():
+            # Preservación de distribución (oficial beta_model._update_params): cada src
+            # elegido 'ratio' veces genera ratio clones + queda el original = ratio+1
+            # instancias, cada una con new_alpha = 1-(1-alpha)^(1/(ratio+1)).
+            # (Antes: alpha/2 -> sobre-densidad en zonas opacas si el src se clona >1 vez.)
+            ratio = torch.bincount(src_idx)[src_idx].to(self._xyz.dtype).unsqueeze(-1)
             src_alpha = self.get_opacity[src_idx].clamp(min=2e-3, max=1.0 - 1e-3)
-            new_alpha = (src_alpha * 0.5).clamp(min=1e-3)
+            new_alpha = (1.0 - torch.pow(1.0 - src_alpha, 1.0 / (ratio + 1.0))).clamp(min=5e-3, max=1.0 - 1e-3)
             new_opacity_raw = self.inverse_opacity_activation(new_alpha)
 
             new_xyz = self._xyz[src_idx].detach().clone()

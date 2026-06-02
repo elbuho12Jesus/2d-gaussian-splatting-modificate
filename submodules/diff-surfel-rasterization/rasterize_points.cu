@@ -97,7 +97,7 @@ RasterizeGaussiansCUDA(
   std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
   std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
   
-  int rendered = 0;
+  int64_t rendered = 0;   // int64: nº de intersecciones puede pasar de 2^31
   if(P != 0)
   {
 	  int M = 0;
@@ -157,7 +157,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int degree,
 	const torch::Tensor& campos,
 	const torch::Tensor& geomBuffer,
-	const int R,
+	const int64_t R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
 	const bool debug) 

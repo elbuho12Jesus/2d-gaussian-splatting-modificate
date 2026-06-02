@@ -170,7 +170,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float* rgb,
 	float4* normal_opacity,
 	const dim3 grid,
-	uint32_t* tiles_touched,
+	uint64_t* tiles_touched,
 	bool prefiltered)
 {
 	auto idx = cg::this_grid().thread_rank();
@@ -573,7 +573,7 @@ void FORWARD::preprocess(int P, int D, int M,
 	float* rgb,
 	float4* normal_opacity,
 	const dim3 grid,
-	uint32_t* tiles_touched,
+	uint64_t* tiles_touched,
 	bool prefiltered)
 {
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (

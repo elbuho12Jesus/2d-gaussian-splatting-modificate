@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruido isotrópico vs ruido moldeado por covarianza</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1e222e; --ink:#e6e8ee; --muted:#9aa3b2;
+    --accent:#6ea8fe; --accent2:#7ee787; --warn:#ffb454; --danger:#ff7b72; --code:#c9d1d9;
+    --line:#2a2f3c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.65}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 24px 96px}
+  h1{font-size:2rem;margin:.2em 0 .1em;line-height:1.2}
+  h2{font-size:1.5rem;margin:2.2em 0 .5em;padding-top:.4em;border-top:1px solid var(--line)}
+  h3{font-size:1.15rem;margin:1.6em 0 .4em;color:var(--accent)}
+  .sub{color:var(--muted);font-size:1.02rem;margin-top:0}
+  p{margin:.6em 0}
+  code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:.9em;background:#0b0d13;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--code)}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow:auto;font-size:.84rem}
+  pre code{background:none;border:none;padding:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0}
+  .card2{background:var(--panel2)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .tag{display:inline-block;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;
+    padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .ok{color:var(--accent2);border-color:#2c5} .bad{color:var(--danger);border-color:#a33} .warn{color:var(--warn);border-color:#a72}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.92rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#10131b;color:var(--muted);font-weight:600}
+  tr:nth-child(even) td{background:#12151d}
+  .note{border-left:3px solid var(--accent);padding:.4em 0 .4em 14px;color:var(--muted);margin:14px 0}
+  .danger-box{border-left:3px solid var(--danger)}
+  .ok-box{border-left:3px solid var(--accent2)}
+  .warn-box{border-left:3px solid var(--warn)}
+  ul{margin:.5em 0;padding-left:1.2em} li{margin:.3em 0}
+  .eq{background:#0b0d13;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0;
+    font-family:"JetBrains Mono",monospace;font-size:.9rem;color:var(--accent2);text-align:center}
+  .meta{color:var(--muted);font-size:.85rem}
+  svg{max-width:100%;height:auto}
+  .hl{color:var(--danger);font-weight:700} .hl2{color:var(--accent2);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Ruido isotrópico vs ruido moldeado por covarianza</h1>
+<p class="sub">El "explorador" de Beta Splatting perturba la posición de cada primitiva con ruido. Hay dos versiones: la <b>isotrópica</b> (la que usa este repo) y la <b>moldeada por covarianza</b> (la del oficial). Difieren en una sola línea, pero esa línea cambia la dirección y la magnitud del empuje.</p>
+
+<h2>1. El término de ruido (lo común a ambas)</h2>
+<div class="card">
+<p>Ambas versiones comparten la <b>misma base</b>: ruido gaussiano, una <b>compuerta por opacidad</b> y la <b>magnitud</b> por learning rate:</p>
+<div class="eq">n<sub>base</sub> = randn(N,3) · (1 − opacity)<sup>100</sup> · noise_lr · xyz_lr</div>
+<ul>
+  <li><code>randn(N,3)</code>: ruido isótropo por construcción (una gaussiana esférica).</li>
+  <li><code>(1 − opacity)<sup>100</sup></code>: <b>compuerta</b>. ≈1 para splats casi muertos (opacity→0), ≈0 para splats opacos. Solo se mueven los "moribundos".</li>
+  <li><code>noise_lr · xyz_lr</code>: escala global del paso.</li>
+</ul>
+<p>La <b>única diferencia</b> es qué se hace con <code>n<sub>base</sub></code> después.</p>
+</div>
+
+<h2>2. Las dos versiones, lado a lado</h2>
+<div class="grid2">
+  <div class="card card2">
+    <span class="tag bad">este repo</span><b>Isotrópico</b>
+<pre><code>noise = randn_like(_xyz) \
+      * (1 - get_opacity)**100 \
+      * noise_lr * xyz_lr
+_xyz.add_(noise)</code></pre>
+    <p>Se aplica <code>n<sub>base</sub></code> <b>tal cual</b>. El desplazamiento es una <b>esfera</b>: misma magnitud en todas las direcciones, ignorando la forma del splat.</p>
+  </div>
+  <div class="card card2">
+    <span class="tag ok">oficial</span><b>Moldeado por covarianza</b>
+<pre><code>L   = build_scaling_rotation(
+        get_scaling, get_rotation)
+cov = L @ L.transpose(1,2)      <span style="color:#8b949e"># Σ = L Lᵀ</span>
+noise = randn_like(_xyz) \
+      * (1 - get_opacity)**100 \
+      * noise_lr * xyz_lr
+noise = bmm(cov, noise)         <span style="color:#ff7b72"># Σ · n</span>
+_xyz.add_(noise)</code></pre>
+    <p>Multiplica <code>n<sub>base</sub></code> por la <b>covarianza Σ del propio splat</b>. El desplazamiento es un <b>elipsoide</b> alineado con la forma y orientación del splat.</p>
+  </div>
+</div>
+
+<h2>3. Qué es Σ y qué le hace al ruido</h2>
+<div class="card">
+<p><code>build_scaling_rotation(s, r)</code> construye <code>L = R(r) · diag(s)</code>, y la covarianza es:</p>
+<div class="eq">Σ = L Lᵀ = R · diag(s²) · Rᵀ</div>
+<p>Es decir: los <b>ejes propios de Σ</b> son los ejes del splat (su rotación), y los <b>autovalores son s²</b> (el cuadrado de las escalas). Al hacer <code>Σ · n</code>:</p>
+<ul>
+  <li><b>Dirección:</b> el ruido se <b>rota y estira</b> hacia los ejes del splat. Un surfel plano/alargado se mueve sobre todo a lo largo de sus ejes grandes, casi nada en el eje fino.</li>
+  <li><b>Magnitud:</b> el desplazamiento a lo largo del eje <i>i</i> queda escalado por su autovalor <code>λ<sub>i</sub> = s<sub>i</sub>²</code>. <span class="hl2">Splats grandes se mueven mucho más; splats pequeños casi no se mueven.</span></li>
+</ul>
+<p class="note">En isotrópico ninguna de esas dos cosas ocurre: la dirección es uniforme y la magnitud es la misma para todo splat (solo depende de la compuerta de opacidad y del lr), sin importar su tamaño ni su orientación.</p>
+</div>
+
+<svg viewBox="0 0 920 260" role="img" aria-label="Esfera de ruido isotrópico vs elipsoide alineado al splat">
+  <rect x="0" y="0" width="920" height="260" fill="#0b0d13" rx="10"/>
+  <!-- izquierda: isotropico -->
+  <text x="230" y="30" fill="#ff7b72" font-size="15" text-anchor="middle" font-weight="bold">Isotrópico — esfera de empuje</text>
+  <!-- splat (surfel plano) -->
+  <g transform="translate(230,150) rotate(-25)">
+    <ellipse cx="0" cy="0" rx="95" ry="22" fill="#6ea8fe" opacity="0.30" stroke="#6ea8fe"/>
+  </g>
+  <!-- esfera de ruido -->
+  <circle cx="230" cy="150" r="60" fill="none" stroke="#ff7b72" stroke-dasharray="5 4"/>
+  <!-- flechas uniformes -->
+  <g stroke="#ff7b72" stroke-width="2" marker-end="url(#ar)">
+    <line x1="230" y1="150" x2="230" y2="98"/>
+    <line x1="230" y1="150" x2="282" y2="150"/>
+    <line x1="230" y1="150" x2="230" y2="202"/>
+    <line x1="230" y1="150" x2="178" y2="150"/>
+    <line x1="230" y1="150" x2="267" y2="113"/>
+    <line x1="230" y1="150" x2="193" y2="187"/>
+  </g>
+  <text x="230" y="240" fill="#9aa3b2" font-size="12" text-anchor="middle">empuja igual en toda dirección (incl. fuera del plano)</text>
+
+  <!-- derecha: covarianza -->
+  <text x="690" y="30" fill="#7ee787" font-size="15" text-anchor="middle" font-weight="bold">Covarianza — elipsoide alineado</text>
+  <g transform="translate(690,150) rotate(-25)">
+    <ellipse cx="0" cy="0" rx="95" ry="22" fill="#6ea8fe" opacity="0.30" stroke="#6ea8fe"/>
+    <!-- elipse de ruido alineada con el splat -->
+    <ellipse cx="0" cy="0" rx="120" ry="14" fill="none" stroke="#7ee787" stroke-dasharray="5 4"/>
+    <!-- flechas a lo largo del eje grande, cortas en el fino -->
+    <g stroke="#7ee787" stroke-width="2" marker-end="url(#ag)">
+      <line x1="0" y1="0" x2="112" y2="0"/>
+      <line x1="0" y1="0" x2="-112" y2="0"/>
+      <line x1="0" y1="0" x2="0" y2="-12"/>
+      <line x1="0" y1="0" x2="0" y2="12"/>
+    </g>
+  </g>
+  <text x="690" y="240" fill="#9aa3b2" font-size="12" text-anchor="middle">se desliza en el plano del surfel; casi nada perpendicular</text>
+
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ff7b72"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7ee787"/></marker>
+  </defs>
+</svg>
+
+<h2>4. Comparación directa</h2>
+<table>
+<tr><th>Aspecto</th><th>Isotrópico (este repo)</th><th>Covarianza (oficial)</th></tr>
+<tr><td>Dirección del empuje</td><td>Uniforme (esfera), aleatoria</td><td>A lo largo de los ejes del splat (elipsoide)</td></tr>
+<tr><td>Magnitud por splat</td><td>Igual para todos (solo gate · lr)</td><td>∝ s² → grandes se mueven mucho más</td></tr>
+<tr><td>Relación con la geometría</td><td>La ignora</td><td>Respeta forma y orientación</td></tr>
+<tr><td>Surfel fino: ¿sale de su plano?</td><td>Sí (puede crear "fuzz"/floaters)</td><td>Casi no (se queda en la superficie)</td></tr>
+<tr><td>Llenar un hueco 3D vacío perpendicular</td><td>Más fácil (empuja en cualquier dirección)</td><td>Más difícil (sesgado al plano)</td></tr>
+<tr><td>Coste</td><td>Una multiplicación</td><td>Construir Σ (N×3×3) + bmm por iter de densify</td></tr>
+</table>
+
+<h2>5. Por qué este repo lo desactivó</h2>
+<div class="card warn-box">
+<p>El oficial usa <b>elipsoides 3D</b>: <code>get_scaling</code> tiene <b>3 componentes</b>, y <code>build_scaling_rotation</code> construye una <code>diag(s)</code> 3×3 sin problema.</p>
+<p>Este repo usa <b>surfels 2D</b> (rasterizer <code>diff-surfel</code>): <code>get_scaling</code> tiene solo <b>2 componentes</b>. La función <code>build_scaling_rotation(get_scaling, …)</code> intenta acceder a <code>s[:,2]</code> → <span class="hl">IndexError</span>. En versiones anteriores ese error quedaba <i>tragado</i> por un <code>try/except</code> silencioso, así que el ruido "por covarianza" <b>nunca se ejecutaba</b> realmente. Al limpiarlo se dejó explícitamente el ruido <b>isotrópico</b>, que sí es compatible con 2 escalas.</p>
+</div>
+
+<h2>6. Implicaciones y cómo se reactivaría</h2>
+<div class="card">
+<p><b>Para tus huecos negros</b>, el isotrópico no es necesariamente peor: empujar en cualquier dirección (incluida la perpendicular al plano) ayuda a sembrar volumen 3D vacío. El precio es que puede sacar surfels de la superficie que deberían representar (ruido/floaters).</p>
+<p>El de covarianza es más <b>coherente con la geometría</b> y acopla el empuje al tamaño del splat (los grandes exploran regiones grandes), pero por sí solo no salta tan fácil a un hueco perpendicular.</p>
+<p class="note ok-box"><b>Para reactivar un moldeado por covarianza en surfels 2D</b> haría falta una de estas dos vías:
+<br>1. Adaptar <code>build_scaling_rotation</code> a <b>2 escalas</b> (Σ en el plano del surfel: el ruido se deslizaría sobre la superficie, sin componente perpendicular).
+<br>2. Migrar a <b>gsplat / primitiva 3D</b>, donde Σ es naturalmente 3×3 y el ruido del oficial funciona tal cual.</p>
+</div>
+
+<p class="meta">Fuente oficial: <code>beta-splatting/train.py:146-155</code> y <code>utils/general_utils.build_scaling_rotation</code>. Este repo: <code>train.py</code> (bloque de ruido en el paso de densificación) — ruido isotrópico, <code>cov @ noise</code> desactivado por incompatibilidad con scales 2D.</p>
+
+</div>
+</body>
+</html>
