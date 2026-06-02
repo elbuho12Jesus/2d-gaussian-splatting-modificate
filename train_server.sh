@@ -1,3 +1,5 @@
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 python train.py -s Datasets/bonsai \
     -m output/m360/bonsai_beta_run4 \
     --iterations 50000 \
