@@ -270,7 +270,32 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     for tensor in p['params']:
                         if tensor.grad is not None:
                             torch.nan_to_num_(tensor.grad, nan=0.0, posinf=0.0, neginf=0.0)
+
+                # Debug del TÉRMINO 1 de la ecuación MCMC: μ ← μ − λ_lr·∇L (paso de Adam).
+                # Capturamos _xyz antes/después del step para medir el desplazamiento REAL
+                # por gradiente |Δμ_grad|, y el |∇_μL| crudo. Misma cadencia que DEBUG_NOISE
+                # (en pasos de densificación) para comparar contra |disp| del ruido (término 2).
+                report_grad = (
+                    DEBUG_NOISE
+                    and iteration % opt.densification_interval == 0
+                    and (iteration // opt.densification_interval) % DEBUG_NOISE == 0
+                )
+                if report_grad:
+                    xyz_before = gaussians._xyz.detach().clone()
+                    g = gaussians._xyz.grad
+                    gnorm = g.norm(dim=1) if g is not None else None
+
                 gaussians.optimizer.step()
+
+                if report_grad:
+                    dgrad = (gaussians._xyz.detach() - xyz_before).norm(dim=1)
+                    gn = ("none" if gnorm is None else
+                          f"mean={gnorm.mean().item():.2e} max={gnorm.max().item():.2e}")
+                    print(f"[GRAD it{iteration}] |grad_xyz|({gn}) "
+                          f"|disp_grad|(mean={dgrad.mean().item():.2e} med={dgrad.median().item():.2e} "
+                          f"max={dgrad.max().item():.2e}) "
+                          f"xyz_lr={float(xyz_lr):.2e} extent={gaussians.spatial_lr_scale:.3f}")
+
                 gaussians.optimizer.zero_grad(set_to_none = True)
 
             mem_probe("post_step", iteration, npts=gaussians.get_xyz.shape[0])
