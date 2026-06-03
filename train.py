@@ -31,6 +31,28 @@ except ImportError:
 def print_memory(tag):
     print(f"[{tag}] allocated={torch.cuda.memory_allocated()/1e9:.3f}GB reserved={torch.cuda.memory_reserved()/1e9:.3f}GB max_reserved={torch.cuda.max_memory_reserved()/1e9:.3f}GB")
 
+# Instrumentación de debug, activada por variables de entorno (0/ausente = off):
+#   DEBUG_MEM=N    -> imprime memoria cada N iters, en cada punto del step (post_render/
+#                     post_backward/post_step) con el PICO por iteración reseteado al inicio.
+#   DEBUG_NOISE=N  -> imprime estadísticas del ruido posicional cada N aplicaciones de ruido.
+DEBUG_MEM = int(os.environ.get("DEBUG_MEM", "0"))
+DEBUG_NOISE = int(os.environ.get("DEBUG_NOISE", "0"))
+
+def mem_probe(tag, iteration, npts=None):
+    """Una línea compacta con alloc/reserved actuales, el pico de la iteración y la
+    memoria LIBRE real del device (delata procesos zombie ocupando VRAM)."""
+    if not DEBUG_MEM or iteration % DEBUG_MEM != 0:
+        return
+    a  = torch.cuda.memory_allocated() / 1e9
+    r  = torch.cuda.memory_reserved() / 1e9
+    pa = torch.cuda.max_memory_allocated() / 1e9
+    pr = torch.cuda.max_memory_reserved() / 1e9
+    free, total = torch.cuda.mem_get_info()
+    extra = f" npts={npts}" if npts is not None else ""
+    print(f"[MEM it{iteration} {tag}] alloc={a:.2f} reserved={r:.2f} "
+          f"peak_alloc={pa:.2f} peak_reserved={pr:.2f} "
+          f"dev_free={free/1e9:.2f}/{total/1e9:.2f}GB{extra}")
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -58,6 +80,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_start.record()
 
+        # Pico de memoria POR step: lo reseteamos aquí para que peak_alloc/peak_reserved
+        # midan el máximo dentro de esta iteración (delata el spike del binning del rasterizer).
+        if DEBUG_MEM and iteration % DEBUG_MEM == 0:
+            torch.cuda.reset_peak_memory_stats()
+
         xyz_lr = gaussians.update_learning_rate(iteration)
 
         # Every 1000 its we increase the levels of SH up to a maximum degree
@@ -71,9 +98,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         
         render_pkg = render(viewpoint_cam, gaussians, pipe, background)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        mem_probe("post_render", iteration, npts=gaussians.get_xyz.shape[0])
                 
         # 🔍 Debug beta (cada 100 iteraciones)
-        if iteration % 100 == 0:
+        if iteration % 5000 == 0:
             with torch.no_grad():
                 beta = gaussians.get_beta
                 print(
@@ -111,9 +139,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             total_loss = total_loss + opt.scale_reg * gaussians.get_scaling.abs().mean()
 
         total_loss.backward()
-        
+        mem_probe("post_backward", iteration, npts=gaussians.get_xyz.shape[0])
+
         # ✅ DEBUG gradiente de beta (DESPUÉS del backward)
-        if iteration % 3000 == 0 and gaussians._beta.grad is not None:
+        if iteration % 10000 == 0 and gaussians._beta.grad is not None:
             print(
                 "grad beta mean:",
                 gaussians._beta.grad.mean().item()
@@ -198,6 +227,27 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             base_noise = torch.bmm(
                                 R, (local_std * base_noise).unsqueeze(-1)).squeeze(-1) # moldea y rota al mundo
                         noise = base_noise * noise_mult * noise_lr * float(xyz_lr)
+
+                        # Debug del ruido: ¿qué splats se mueven y cuánto? Con noise_exp=100
+                        # solo los de opacidad baja deberían moverse; el desplazamiento debe
+                        # ser pequeño frente a la escala de escena (spatial_lr_scale).
+                        if DEBUG_NOISE and (iteration // opt.densification_interval) % DEBUG_NOISE == 0:
+                            op = gaussians.get_opacity.squeeze(-1)
+                            disp = noise.norm(dim=1)                         # |Δxyz| por splat
+                            mult = noise_mult.squeeze(-1)
+                            active = mult > 1e-3                            # splats realmente perturbados
+                            print(f"[NOISE it{iteration}] N={op.numel()} "
+                                  f"op(mean={op.mean().item():.3f} min={op.min().item():.3f}) "
+                                  f"mult(mean={mult.mean().item():.2e} max={mult.max().item():.2e}) "
+                                  f"activos={int(active.sum().item())} ({100*active.float().mean().item():.2f}%) "
+                                  f"|disp|(mean={disp.mean().item():.2e} med={disp.median().item():.2e} "
+                                  f"max={disp.max().item():.2e}) "
+                                  f"xyz_lr={float(xyz_lr):.2e} noise_lr={noise_lr:.1e} extent={gaussians.spatial_lr_scale:.3f}")
+                            if bool(getattr(opt, "cov_noise", False)):
+                                print(f"[NOISE it{iteration}] cov: w(mean={w.mean().item():.3f} "
+                                      f"min={w.min().item():.3f} max={w.max().item():.3f}) "
+                                      f"pad(normal)={pad:.2f}")
+
                         gaussians._xyz.add_(noise)
 
                 # Reset de opacidades periódico (default deshabilitado: interval=1e9)
@@ -222,6 +272,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             torch.nan_to_num_(tensor.grad, nan=0.0, posinf=0.0, neginf=0.0)
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
+
+            mem_probe("post_step", iteration, npts=gaussians.get_xyz.shape[0])
 
             # ✅ Clamp suave del parámetro b (no del beta)
             with torch.no_grad():
