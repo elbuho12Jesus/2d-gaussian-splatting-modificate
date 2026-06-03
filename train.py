@@ -28,6 +28,9 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
+def print_memory(tag):
+    print(f"[{tag}] allocated={torch.cuda.memory_allocated()/1e9:.3f}GB reserved={torch.cuda.memory_reserved()/1e9:.3f}GB max_reserved={torch.cuda.max_memory_reserved()/1e9:.3f}GB")
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -199,7 +202,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 # Reset de opacidades periódico (default deshabilitado: interval=1e9)
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                    print_memory("antes_reset")
                     gaussians.reset_opacity()
+                    print_memory("después_reset")
             else:
                 # Post-densify: sanear NaN/Inf cada densification_interval pasos para que
                 # los últimos miles de iters no acumulen splats degenerados (zonas negras).

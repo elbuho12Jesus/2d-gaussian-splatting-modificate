@@ -1,28 +1,24 @@
-grad beta mean: -7.420803971314172e-10 [02/06 11:14:21]
-
-[ITER 15000] Evaluating train: L1 0.12893838435411453 PSNR 15.457376480102539 [02/06 11:14:22]
-[Iter 15100] beta mean=0.1125, min=0.0927, max=0.2195 [02/06 11:15:54]
-grad beta mean: 6.021709797465746e-10 [02/06 11:15:54]
-[Iter 15200] beta mean=0.1118, min=0.0937, max=0.2118 [02/06 11:17:56]
-grad beta mean: 3.5125893860232793e-10 [02/06 11:17:57]
+Training progress:  40%|███▉      | 19800/50000 [2:50:05<18:30:27,  2.21s/it, Loss=0.17935, distort=0.00569, normal=0.01589, Points=1500000]9.557556968076142e-10 [02/06 23:06:30]
+[Iter 19300] beta mean=0.1024, min=0.0935, max=0.1537 [02/06 23:09:14]
+grad beta mean: -1.1970903435187807e-10 [02/06 23:09:16]
+[Iter 19400] beta mean=0.1023, min=0.0922, max=0.1560 [02/06 23:13:57]
+grad beta mean: -3.21168730499366e-10 [02/06 23:13:58]
+[Iter 19500] beta mean=0.1027, min=0.0918, max=0.1603 [02/06 23:18:11]
+grad beta mean: -4.022722988050731e-10 [02/06 23:18:11]
+[Iter 19600] beta mean=0.1029, min=0.0921, max=0.1603 [02/06 23:22:09]
+grad beta mean: 9.502957309948101e-10 [02/06 23:22:10]
+[Iter 19700] beta mean=0.1040, min=0.0914, max=0.1570 [02/06 23:26:02]
+grad beta mean: 1.019435647009459e-09 [02/06 23:26:03]
+[Iter 19800] beta mean=0.1019, min=0.0914, max=0.1488 [02/06 23:30:28]
+grad beta mean: -1.239428781829588e-09 [02/06 23:30:29]
 Traceback (most recent call last):
-  File "/workspace/train.py", line 347, in <module>
+  File "/workspace/train.py", line 360, in <module>
     training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint)
-  File "/workspace/train.py", line 69, in training
-    render_pkg = render(viewpoint_cam, gaussians, pipe, background)
-  File "/workspace/gaussian_renderer/__init__.py", line 98, in render
-    rendered_image, radii, allmap = rasterizer(
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/diff_surfel_rasterization/__init__.py", line 218, in forward
-    return rasterize_gaussians(
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/diff_surfel_rasterization/__init__.py", line 33, in rasterize_gaussians
-    return _RasterizeGaussians.apply(
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/torch/autograd/function.py", line 575, in apply
-    return super().apply(*args, **kwargs)  # type: ignore[misc]
-  File "/root/miniconda3/envs/surfel_splatting_modificate/lib/python3.10/site-packages/diff_surfel_rasterization/__init__.py", line 96, in forward
-    num_rendered, color, depth, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 47.44 GiB. GPU 0 has a total capacity of 94.97 GiB of which 46.09 GiB is free. Including non-PyTorch memory, this process has 48.87 GiB memory in use. Of the allocated memory 2.48 GiB is allocated by PyTorch, and 45.68 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-Training progress:  30%|███       | 15200/50000 [1:02:29<2:23:04,  4.05it/s, Loss=0.20945, distort=0.00686, normal=0.01451, Points=2000000]
+  File "/workspace/train.py", line 85, in training
+    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+  File "/workspace/utils/loss_utils.py", line 51, in ssim
+    return _ssim(img1, img2, window, window_size, channel, size_average)
+  File "/workspace/utils/loss_utils.py", line 62, in _ssim
+    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 9.50 MiB is free. Including non-PyTorch memory, this process has 94.95 GiB memory in use. Of the allocated memory 94.13 GiB is allocated by PyTorch, and 114.00 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+Training progress:  40%|███▉      | 19800/50000 [2:50:39<4:20:17,  1.93it/s, Loss=0.17935, distort=0.00569, normal=0.01589, Points=1500000] 
