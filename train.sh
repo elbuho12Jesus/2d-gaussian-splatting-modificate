@@ -7,7 +7,7 @@ python train.py -s /home/jesus/Documents/Gaussian_splatting/360_extra_scenes/bon
     --densify_until_iter 45000 \
     --lambda_normal 0.05 \
     --lambda_dist 10 \
-    --opacity_reset_interval 3000 \
+    --opacity_reset_interval 1000000000 \
     --cap_max 2500000 \
     --noise_lr 5e4 \
     --scale_reg 0.005 \
