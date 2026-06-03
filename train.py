@@ -113,7 +113,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         total_loss.backward()
         
         # ✅ DEBUG gradiente de beta (DESPUÉS del backward)
-        if iteration % 100 == 0 and gaussians._beta.grad is not None:
+        if iteration % 3000 == 0 and gaussians._beta.grad is not None:
             print(
                 "grad beta mean:",
                 gaussians._beta.grad.mean().item()
