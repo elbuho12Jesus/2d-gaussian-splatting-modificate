@@ -66,6 +66,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+    # Centros de las cámaras de train (C,3) para el cull anti-floater: splats que
+    # viven más cerca de una cámara que cualquier geometría legítima (medido en
+    # flowers4: p1 de dist mínima = 0.25·extent) son floaters → reciclar vía relocate.
+    cam_centers = torch.stack(
+        [c.camera_center for c in scene.getTrainCameras()]).to("cuda")  # (C,3)
+
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
@@ -200,6 +206,24 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     # explosivos o por desplazamientos extremos del ruido posicional.
                     gaussians.sanitize_parameters(iteration=iteration)
                     dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
+
+                    # Cull anti-floater: splats más cerca de un centro de cámara de
+                    # train que floater_cull_dist·extent se marcan muertos → relocate
+                    # los recicla a zonas de alto error (no se pierde presupuesto).
+                    # Por chunks para no materializar la matriz (N,C) completa.
+                    if getattr(opt, "floater_cull_dist", 0.0) > 0:
+                        cull_r = opt.floater_cull_dist * gaussians.spatial_lr_scale
+                        xyz = gaussians.get_xyz
+                        near_cam = torch.zeros(xyz.shape[0], dtype=torch.bool, device=xyz.device)
+                        for i0 in range(0, xyz.shape[0], 2_000_000):
+                            d = torch.cdist(xyz[i0:i0 + 2_000_000], cam_centers)  # (chunk,C)
+                            near_cam[i0:i0 + 2_000_000] = d.min(dim=1).values < cull_r
+                        if DEBUG_NOISE and (iteration // opt.densification_interval) % DEBUG_NOISE == 0:
+                            print(f"[FLOATER it{iteration}] cull_r={cull_r:.3f} "
+                                  f"n_culled={int(near_cam.sum().item())} "
+                                  f"({100 * near_cam.float().mean().item():.3f}%)")
+                        dead_mask = dead_mask | near_cam
+
                     gaussians.relocate_gs(dead_mask=dead_mask, error_weight=opt.mcmc_error_weight)
                     gaussians.add_new_gs(cap_max=opt.cap_max, error_weight=opt.mcmc_error_weight, jitter_scale=opt.mcmc_jitter_scale)
 

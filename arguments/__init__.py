@@ -129,6 +129,13 @@ class OptimizationParams(ParamGroup):
         # Escala isotrópica de la componente normal del ruido híbrido. 1.0 = la normal
         # explora a la tasa media del plano; 0.0 = ruido CONFINADO al plano (rango 2).
         self.cov_noise_normal = 1.0
+        # --- Cull anti-floater por proximidad a cámaras de train ---
+        # Marca como muertos (→ relocate MCMC) los splats a menos de
+        # floater_cull_dist · extent de CUALQUIER centro de cámara de train.
+        # Medido en flowers4 (7.5M): el 99% de los splats está a >0.25·extent de
+        # toda cámara; la cola <0.2·extent (~49k, op_med 0.25) son floaters que
+        # emborronan el césped en vistas nuevas. 0.0 = desactivado (default).
+        self.floater_cull_dist = 0.0
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 
