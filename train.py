@@ -209,20 +209,22 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     #    surfel (las 2 escalas) + isotrópico en la NORMAL. No usamos
                     #    build_scaling_rotation (accede a s[:,2] → IndexError con scales 2D);
                     #    construimos R con build_rotation y aplicamos un std local de 3 ejes.
-                    #    OJO magnitudes: usamos pesos de anisotropía NORMALIZADOS a media 1
-                    #    (no s² crudo, que es ~1e-4 y descuadraría noise_lr congelando el
-                    #    plano); así noise_lr sigue calibrado. Ver docs/ruido_isotropico_*.
+                    #    MAGNITUD ∝ TAMAÑO REAL (plan #2, 2026-06-05): usamos s CRUDO (no
+                    #    normalizado a media 1), así el ruido escala con el tamaño del splat
+                    #    como en el oficial (ruido ∝ Σ): el fondo (splats grandes) viaja a
+                    #    tapar huecos y el primer plano (splats pequeños) queda quieto. s ya
+                    #    está acotado por el clamp 0.1·extent de get_scaling → sin teletransporte
+                    #    de degenerados. noise_lr re-calibrado. Ver docs/ruido_isotropico_*.
                     with torch.no_grad():
                         noise_exp = float(getattr(opt, "noise_opacity_exponent", 100.0))
                         noise_lr = float(getattr(opt, "noise_lr", 5e5))
                         base_noise = torch.randn_like(gaussians._xyz)
                         noise_mult = torch.pow(1.0 - gaussians.get_opacity, noise_exp)
                         if bool(getattr(opt, "cov_noise", False)):
-                            s = gaussians.get_scaling                                  # (N,2) ejes del plano
-                            w = s / s.mean(dim=1, keepdim=True).clamp_min(1e-8)        # anisotropía, media 1
+                            s = gaussians.get_scaling                                  # (N,2) escalas REALES del plano (ya clamp 0.1·extent)
                             pad = float(getattr(opt, "cov_noise_normal", 1.0))         # 0 = confinado al plano
-                            local_std = torch.cat(
-                                [w, torch.full_like(s[:, :1], pad)], dim=1)            # (N,3): [u, v, normal]
+                            normal_std = pad * s.mean(dim=1, keepdim=True)             # normal ∝ tasa media del plano (∝ tamaño)
+                            local_std = torch.cat([s, normal_std], dim=1)             # (N,3): ∝ tamaño real [u, v, normal]
                             R = build_rotation(gaussians.get_rotation)                 # (N,3,3), col 2 = normal
                             base_noise = torch.bmm(
                                 R, (local_std * base_noise).unsqueeze(-1)).squeeze(-1) # moldea y rota al mundo
@@ -244,9 +246,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                   f"max={disp.max().item():.2e}) "
                                   f"xyz_lr={float(xyz_lr):.2e} noise_lr={noise_lr:.1e} extent={gaussians.spatial_lr_scale:.3f}")
                             if bool(getattr(opt, "cov_noise", False)):
-                                print(f"[NOISE it{iteration}] cov: w(mean={w.mean().item():.3f} "
-                                      f"min={w.min().item():.3f} max={w.max().item():.3f}) "
-                                      f"pad(normal)={pad:.2f}")
+                                print(f"[NOISE it{iteration}] cov: s(mean={s.mean().item():.3e} "
+                                      f"min={s.min().item():.3e} max={s.max().item():.3e}) "
+                                      f"normal_std(mean={normal_std.mean().item():.3e}) pad={pad:.2f}")
 
                         gaussians._xyz.add_(noise)
 

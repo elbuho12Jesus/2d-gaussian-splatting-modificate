@@ -2,7 +2,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Iteración a renderizar (checkpoint del modelo).
 ITER=50000
-MODEL=output/m360/flowers_beta_run3
+MODEL=output/m360/flowers_beta_run4
 
 # 1) Vídeo de trayectoria (vistas nuevas interpoladas).
 # --skip_train --skip_test --skip_mesh + --render_path => SOLO genera el vídeo,
