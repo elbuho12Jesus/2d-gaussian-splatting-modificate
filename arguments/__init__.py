@@ -47,6 +47,14 @@ class ParamGroup:
 class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
+        # --- Spherical Betas (Beta Splatting oficial) ---
+        # Nº de lóbulos SB por splat para color view-dependent:
+        #   C = SH(dir) + Σᵢ cᵢ · max(dot(μᵢ, dir), 0)^(4·exp(bᵢ))
+        # Cada lóbulo = 6 params (r,g,b,θ,φ,b). El oficial usa sb_number=2 con
+        # sh_degree=0 (solo DC): 3+12=15 params de color vs 48 de SH3, y los lóbulos
+        # capturan el view-dependence que SH3 no puede (cielo-entre-hojas, césped
+        # rasante). 0 = desactivado (compat con runs previos, color 100% SH).
+        self.sb_number = 0
         self._source_path = ""
         self._model_path = ""
         self._images = "images"
@@ -78,6 +86,8 @@ class OptimizationParams(ParamGroup):
         self.position_lr_delay_mult = 0.01
         self.position_lr_max_steps = 30_000
         self.feature_lr = 0.0025
+        # lr de los lóbulos Spherical Beta (default oficial beta-splatting)
+        self.sb_params_lr = 0.0025
         self.opacity_lr = 0.05
         self.beta_lr = 0.001
         self.scaling_lr = 0.005

@@ -83,13 +83,37 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     pipe.convert_SHs_python = False
     shs = None
     colors_precomp = None
+    use_sb = getattr(pc, "sb_number", 0) > 0
     if override_color is None:
-        if pipe.convert_SHs_python:
+        if use_sb or pipe.convert_SHs_python:
             shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
             dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
+            if use_sb:
+                # Spherical Betas (port del kernel oficial gsplat spherical_beta.cuh):
+                #   C = base_SH + Σᵢ cᵢ · max(dot(μᵢ, dir), 0)^(4·exp(bᵢ))
+                # Evaluado por splat en Python (diferenciable) ANTES de rasterizar,
+                # exactamente como el oficial lo evalúa antes del blending. El lóbulo
+                # con b aprendible va de casi-difuso (b<<0) a spike especular (b>>0):
+                # es el view-dependence que SH bajo no puede representar (cielo entre
+                # hojas, césped rasante).
+                sb = pc.get_sb_params                              # (N, M, 6) rgb ya ≥0 (softplus)
+                lobe_rgb = sb[..., 0:3]                            # (N, M, 3)
+                theta, phi, b = sb[..., 3], sb[..., 4], sb[..., 5] # (N, M)
+                sin_t = torch.sin(theta)
+                axis = torch.stack([sin_t * torch.cos(phi),
+                                    sin_t * torch.sin(phi),
+                                    torch.cos(theta)], dim=-1)     # (N, M, 3) eje del lóbulo
+                dotp = (axis * dir_pp_normalized.unsqueeze(1)).sum(dim=-1)  # (N, M)
+                # pow sobre dot clampeado (grad finito) y where para anular el
+                # hemisferio trasero, como el `if (dot > 0)` del kernel.
+                w = torch.where(dotp > 0,
+                                dotp.clamp(min=1e-8) ** (4.0 * torch.exp(b)),
+                                torch.zeros_like(dotp))            # (N, M)
+                colors_precomp = torch.clamp_min(
+                    colors_precomp + (w.unsqueeze(-1) * lobe_rgb).sum(dim=1), 0.0)
         else:
             shs = pc.get_features
     else:
