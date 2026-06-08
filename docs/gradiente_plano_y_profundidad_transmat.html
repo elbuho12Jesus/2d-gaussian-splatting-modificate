@@ -249,18 +249,61 @@ dL_dTw = pix.x*dL_dk + pix.y*dL_dl  +  <span class="hl">dL_dz * (s.x, s.y, 1)</s
 <p class="center big">Moraleja: en la rama <code>rho3d</code>, plano y profundidad están <span class="hl">totalmente acoplados</span> a través de T.</p>
 
 
-<h2>5. La rama <code>rho2d</code> (splats pequeños): aquí SÍ se separan</h2>
+<h2>5. La rama <code>rho2d</code> (splats pequeños): qué pasa de verdad</h2>
 
-<p>Para surfels sub-píxel (gana el filtro de 2 px, <code>rho2d &lt; rho3d</code>) el reparto es distinto:</p>
+<p>Recuerda el forward: <code>rho = <b>min</b>(rho3d, rho2d)</code>. Hay dos "huellas" compitiendo por píxel:</p>
+<div class="eq">rho3d = s.x² + s.y²&nbsp;&nbsp;(huella analítica real del surfel)<br>
+rho2d = FilterInvSquare·(d.x² + d.y²) = <b>2·|d|²</b>&nbsp;&nbsp;(filtro pasa-bajo, <code>d</code> = píxeles desde el centro)</div>
+<p><code>rho2d</code> es un <b>disco de tamaño fijo en pantalla</b>: vale 1 (= borde del kernel) cuando <code>|d| = 1/√2 ≈ 0.707 px</code>, sin importar el tamaño real del surfel. Es el suelo anti-aliasing: ningún splat puede renderizar más pequeño que ~0.7 px. La rama <code>rho2d</code> se toma cuando ese disco fijo es <i>más estrecho</i> que la huella analítica → en los splats <b>pequeños/lejanos</b>.</p>
+
+<div class="card">
+<p class="big">Ejemplo de juguete — un surfel de césped lejano</p>
+<p>Surfel isótropo de césped, <code>s = 0.05</code> (mundo), a profundidad <code>z = 50</code>, cámara con <code>f = 500 px</code>. Su radio proyectado en pantalla:</p>
+<div class="eq">r_px = f · s / z = 500 · 0.05 / 50 = <b>0.5 px</b></div>
+<p>En coords locales, el píxel a distancia <code>d</code> (px) del centro cae en <code>s_local = d / r_px = d / 0.5</code>. Comparamos las dos huellas a varias distancias:</p>
+<table>
+<thead><tr><th><code>d</code> (px)</th><th>rho3d = (d/0.5)²</th><th>rho2d = 2·d²</th><th>min → rama</th></tr></thead>
+<tbody>
+<tr><td>0.2</td><td>0.16</td><td>0.08</td><td><span class="hl2">rho2d</span></td></tr>
+<tr><td>0.4</td><td>0.64</td><td>0.32</td><td><span class="hl2">rho2d</span></td></tr>
+<tr><td>0.6</td><td>1.44 (fuera)</td><td>0.72</td><td><span class="hl2">rho2d</span></td></tr>
+<tr><td>0.707</td><td>2.0 (fuera)</td><td>1.0 (borde)</td><td><span class="hl2">rho2d</span></td></tr>
+</tbody>
+</table>
+<p>El cruce <code>rho3d = rho2d</code> exige <code>1/r_px² = 2</code>, es decir <code>r_px = 0.707 px</code>. Como nuestro surfel proyecta <b>0.5 px &lt; 0.707</b>, <span class="hl">rho2d gana SIEMPRE</span> → la huella analítica <b>nunca se usa</b>. El surfel se dibuja como el disco fijo de 0.7 px, da igual su forma real.</p>
+</div>
+
+<p><b>Consecuencia 1 (forward): la forma del surfel es invisible.</b> Cuando gana <code>rho2d</code>, el kernel <code>G = (1−rho2d)^β</code> depende solo de <code>|d|</code> (píxeles al centro) y de <code>β</code>. <span class="hl">El tamaño <code>(s_u,s_v)</code> y la orientación en el plano del surfel NO aparecen en el píxel.</span> Solo cuentan: el <b>centro proyectado</b>, la <b>profundidad</b> y el <b>color/opacidad</b>.</p>
+
+<p><b>Consecuencia 2 (backward): plano y profundidad se separan.</b></p>
 <pre><code>// backward.cu, rama rho2d
-// — el PLANO va a dL_dmean2D:
-dL_dmean2D.x += dL_d_rho * (2·FilterInvSquare·d.x);
+// — el PLANO solo puede pedir "mueve tu CENTRO en pantalla" (no reformar la huella):
+dL_dmean2D.x += dL_d_rho * (2·FilterInvSquare·d.x);   // ∂rho2d/∂d.x = 4·d.x
 dL_dmean2D.y += dL_d_rho * (2·FilterInvSquare·d.y);
-// — la PROFUNDIDAD va sólo a la fila Tw:
-dL_dtransMat[6] += s.x * dL_dz;
-dL_dtransMat[7] += s.y * dL_dz;
-dL_dtransMat[8] +=       dL_dz;</code></pre>
-<p>Aquí el gradiente del plano (<code>dL_d_rho·∂ρ/∂d</code>) no entra en T directamente: se escribe en <code>dL_dmean2D</code>. Pero <b>no se pierde</b>: <code>compute_transmat_aabb</code> lo lee después y lo mete en <code>dL_dT</code> (ver doc del backward, Hallazgo #3) → de ahí a posición/escala/rotación. La profundidad va por separado a <code>Tw</code>. <b>El acoplamiento plano↔profundidad existe igual</b>, solo que se materializa en <code>compute_transmat_aabb</code> en vez de en <code>renderCUDA</code>.</p>
+// — la PROFUNDIDAD va, por separado, a la fila Tw:
+dL_dtransMat[6] += s.x * dL_dz;     dL_dtransMat[7] += s.y * dL_dz;     dL_dtransMat[8] += dL_dz;</code></pre>
+<p>Aquí el gradiente fotométrico (<code>dL_d_rho</code>) <b>no remodela la huella</b> (es el disco fijo): solo empuja el <b>centro en pantalla</b> vía <code>dL_dmean2D</code>. Ese empujón 2D no se pierde — <code>compute_transmat_aabb</code> lo lee (FIX #3) y lo mete en <code>dL_dT</code> → posición/escala/rotación 3D — pero es <b>una sola señal de traslación</b>, no un gradiente de forma. La profundidad viaja aparte a <code>Tw</code>.</p>
+
+<svg viewBox="0 0 900 250" font-family="JetBrains Mono, monospace" font-size="12">
+  <rect x="0" y="0" width="900" height="250" fill="#0b0d13" rx="10"/>
+  <text x="20" y="26" fill="#9aa3b2">min(rho3d, rho2d) para el surfel de 0.5 px — rho2d (azul) siempre por debajo</text>
+  <line x1="60" y1="200" x2="840" y2="200" stroke="#2a2f3c"/>
+  <line x1="60" y1="40" x2="60" y2="200" stroke="#2a2f3c"/>
+  <text x="30" y="46" fill="#9aa3b2">ρ=1</text>
+  <line x1="60" y1="60" x2="840" y2="60" stroke="#2a2f3c" stroke-dasharray="3 3"/>
+  <text x="44" y="204" fill="#9aa3b2">0</text>
+  <text x="820" y="220" fill="#9aa3b2">|d| px</text>
+  <!-- map: d 0..0.8 -> x 60..840 ; rho 0..2 -> y 200..(200-140*rho/2)?? cutoff rho=1 at y=60 so rho->y: y=200-140*rho (rho=1->60) -->
+  <!-- rho3d = (d/0.5)^2 ; at d=0.5 rho=1 (y60); plot up to d where rho=1 -->
+  <path d="M60,200 Q310,150 545,60" fill="none" stroke="#ffb454" stroke-width="2.5"/>
+  <text x="430" y="120" fill="#ffb454">rho3d (forma real)</text>
+  <!-- rho2d = 2 d^2 ; at d=0.707 rho=1 (x ~ 60+780*0.707/0.8=750? ) let me place cutoff near x=750 -->
+  <path d="M60,200 Q470,180 750,60" fill="none" stroke="#6ea8fe" stroke-width="2.5"/>
+  <text x="600" y="150" fill="#6ea8fe">rho2d (disco fijo) ← gana</text>
+  <circle cx="750" cy="60" r="5" fill="#6ea8fe"/>
+  <text x="690" y="50" fill="#6ea8fe">|d|=0.707</text>
+  <text x="120" y="238" fill="#9aa3b2" text-anchor="start">El surfel se renderiza siguiendo la curva AZUL: su anchura/forma reales (curva naranja) nunca mandan.</text>
+</svg>
 
 
 <h2>6. La señal de densificación sale de ese acoplamiento</h2>
@@ -279,14 +322,65 @@ dL_dmean2D.y = dL_dtransMat[idx*9+5] * depth * 0.5*H; // Tv.z · profundidad</co
 <tbody>
 <tr><td><code>lambda_dist</code> alto deforma la imagen, no solo la malla</td><td>El <code>dL_dz</code> de la distorsión entra en <code>dL_ds</code> (vía <code>Tw</code>) y en <code>dL_dTu/Tv</code> → <b>remoldea la huella en el plano</b>. Por eso sube/baja PSNR aunque "solo" toque profundidad. (Coherente con el doc <code>lambda_dist_2dgs_vs_beta.html</code>.)</td></tr>
 <tr><td>El FIX #1 del backward (derivada beta en rho3d) también afecta la profundidad</td><td>El FIX #1 escala el término de plano <code>dL_d_rho·2·s</code> por <code>2β/(1−ρ)</code>. Como ese <code>dL_ds</code> alimenta <code>dL_dTw</code> (<code>pix·dL_dk + pix·dL_dl</code>), <b>el gradiente de profundidad/inclinación de los splats grandes también cambia de magnitud</b>, no solo la silueta.</td></tr>
-<tr><td>Surfels de fondo rasantes = difíciles de fijar</td><td>Están muy inclinados (<code>Tw.x,Tw.y</code> grandes) → su profundidad es <b>hipersensible</b> a la posición en el plano. Un pequeño error de silueta = gran error de profundidad y viceversa. Con vistas oblicuas escasas (cobertura rasante) el problema está mal condicionado → es parte del techo estructural del surfel 2D.</td></tr>
+<tr><td>Surfels de fondo rasantes = difíciles de fijar</td><td>Muy inclinados (<code>Tw.x,Tw.y</code> grandes) → profundidad <b>hipersensible</b> a la posición en el plano; mal condicionado con vistas escasas. <b>Es el techo estructural del surfel 2D → ver §8.</b></td></tr>
 <tr><td>El término de fondo importa en plano Y profundidad</td><td>El FIX #3 puso el término de fondo en <code>dL_d_rho</code>; como <code>dL_d_rho</code> entra en <code>dL_ds</code> que va a las tres filas de T, el fondo ahora pesa también en la inclinación/profundidad de los splats del cielo/césped, no solo en su color.</td></tr>
 </tbody>
 </table>
 
+<h2>8. Por qué el fondo rasante es un techo ESTRUCTURAL (y el 3DGS no lo sufre igual)</h2>
+
+<p>Juntando todo lo anterior: las cámaras de flowers <b>orbitan el parterre</b>, así que el césped/cielo del anillo exterior solo se ve <b>de refilón (rasante) y de lejos</b>, en pocas vistas de train. Para un <b>surfel 2D</b> esa combinación es el peor caso, por cuatro razones que <i>no</i> son un bug sino la naturaleza de la primitiva:</p>
+
+<ol>
+<li><b>Sin grosor (medida cero).</b> El surfel es un plano. Su profundidad es función <b>unívoca</b> de la posición en el plano (<code>c_d = s·Tw_xy + Tw.z</code>, §1). No tiene forma de representar "incertidumbre de profundidad": donde el fondo es difuso (hojas, hierba, cielo entre ramas) no hay <b>una</b> superficie, pero el surfel está obligado a comprometerse con un plano exacto.</li>
+<li><b>De canto proyecta una astilla.</b> A ángulo rasante el disco se ve casi de perfil → su eje corto cae <b>sub-píxel</b> → entra el clamp <code>rho2d</code> (§5): su forma real se vuelve <b>invisible</b> y solo cuentan centro + profundidad + color. El optimizador <b>no puede usar la anisotropía del surfel</b> para casar la textura rasante; se queda con discos de 0.7 px.</li>
+<li><b>Acoplamiento máximo = mal condicionado.</b> Inclinación rasante ⇒ <code>Tw.x,Tw.y</code> grandes ⇒ un error minúsculo de orientación = error enorme de profundidad/silueta (§2: con 30° ya barría Δz=0.30; a 80° barre muchísimo más). La optimización de esos surfels está mal condicionada.</li>
+<li><b>Pocas vistas ⇒ memoriza, no generaliza.</b> Con rayos de train escasos y rasantes, cada astilla se puede colocar para que <i>cada rayo de train</i> la pegue en el píxel y color correctos. Pero desde un ángulo <b>nuevo</b> (test) la astilla está mal orientada/colocada → aparece como mancha/brochazo. Es exactamente el patrón medido en runs 4–8: train sube, test se estanca ~21.</li>
+</ol>
+
+<div class="grid2">
+<div class="card"><p class="center"><b>Surfel 2D — de canto</b></p>
+<svg viewBox="0 0 380 170" font-family="JetBrains Mono, monospace" font-size="11">
+  <rect x="0" y="0" width="380" height="170" fill="#0b0d13" rx="8"/>
+  <circle cx="40" cy="85" r="5" fill="#6ee7ff"/><text x="20" y="75" fill="#6ee7ff">cám</text>
+  <line x1="40" y1="85" x2="330" y2="55" stroke="#2a2f3c"/>
+  <line x1="40" y1="85" x2="330" y2="120" stroke="#2a2f3c"/>
+  <!-- surfel casi de canto -->
+  <line x1="250" y1="35" x2="270" y2="140" stroke="#7ee787" stroke-width="4"/>
+  <text x="278" y="90" fill="#7ee787">disco</text>
+  <text x="278" y="105" fill="#7ee787">≈ de canto</text>
+  <text x="120" y="155" fill="#ff7b72" text-anchor="middle">proyecta una ASTILLA (sub-píxel) → clamp rho2d</text>
+</svg>
+</div>
+<div class="card"><p class="center"><b>Gaussiano 3D — volumen</b></p>
+<svg viewBox="0 0 380 170" font-family="JetBrains Mono, monospace" font-size="11">
+  <rect x="0" y="0" width="380" height="170" fill="#0b0d13" rx="8"/>
+  <circle cx="40" cy="85" r="5" fill="#6ee7ff"/><text x="20" y="75" fill="#6ee7ff">cám</text>
+  <line x1="40" y1="85" x2="330" y2="55" stroke="#2a2f3c"/>
+  <line x1="40" y1="85" x2="330" y2="120" stroke="#2a2f3c"/>
+  <!-- ellipsoid -->
+  <ellipse cx="262" cy="88" rx="34" ry="26" fill="#7ee787" opacity="0.35" stroke="#7ee787"/>
+  <text x="120" y="155" fill="#7ee787" text-anchor="middle">proyecta una ELIPSE acotada (siempre con forma)</text>
+</svg>
+</div>
+</div>
+
+<p><b>El elipsoide 3D del 3DGS evita las cuatro:</b></p>
+<table>
+<thead><tr><th></th><th>Surfel 2D (este repo)</th><th>Gaussiano 3D (3DGS / oficial gsplat)</th></tr></thead>
+<tbody>
+<tr><td>Escalas</td><td>2 (plano)</td><td>3 (volumen)</td></tr>
+<tr><td>Profundidad</td><td>única por punto (plano de medida cero)</td><td><b>extendida</b> a lo largo del rayo → absorbe incertidumbre como densidad</td></tr>
+<tr><td>A ángulo rasante</td><td>astilla sub-píxel → forma <b>descartada</b> por <code>min(rho3d,rho2d)</code></td><td>elipse 2D acotada; el low-pass se <b>suma</b> a la cónica (dilatación) → la forma <b>siempre contribuye</b></td></tr>
+<tr><td>Huella entre vistas</td><td>cambia bruscamente (cara↔canto) → view-dependiente</td><td>suave y consistente (volumen) → generaliza mejor</td></tr>
+</tbody>
+</table>
+
+<div class="note warn-box"><b>Matiz honesto:</b> esto es <i>by design</i> del 2DGS, no un fallo del port. El 2DGS sacrifica algo de PSNR en fondos difusos/ilimitados a cambio de <b>mejor geometría/malla</b> (su objetivo original). En este proyecto eso se traduce en un techo: <b>test ≈ baseline 2DGS (~21)</b> y la capacidad extra solo memoriza (runs 4–8). Es la hipótesis de trabajo más consistente con todos los datos, no un teorema — pero apunta a que la palanca real es <b>la primitiva</b> (migrar a gsplat/3D), no más ajustes del 2DGS.</p></div>
+
 <div class="card ok-box">
 <p class="big">Resumen en una frase</p>
-<p>En un surfel 2D el plano de imagen y la profundidad <b>no son dos parámetros separados</b>: son dos lecturas de la misma matriz T. Cualquier gradiente — de color, de profundidad, de fondo — se reparte por las tres filas de T y mueve <b>ambas cosas a la vez</b>. Esto es elegante (una sola primitiva) pero también es <i>por qué</i> los surfels de fondo, muy inclinados y vistos de refilón, son tan difíciles de ajustar sin que se deformen.</p>
+<p>En un surfel 2D el plano de imagen y la profundidad <b>no son dos parámetros separados</b>: son dos lecturas de la misma matriz T. Cualquier gradiente — de color, de profundidad, de fondo — se reparte por las tres filas de T y mueve <b>ambas cosas a la vez</b>. Es elegante (una sola primitiva) pero también es <i>por qué</i> los surfels de fondo, muy inclinados y vistos de refilón, son tan difíciles de fijar sin que se deformen — y por qué un volumen 3D, que no colapsa a un plano de canto, generaliza mejor justo ahí.</p>
 </div>
 
 <p class="meta">Documento 2026-06-08. Fuente: <code>cuda_rasterizer/forward.cu</code> + <code>backward.cu</code> (estado actual, con FIX #1/#2/#3). Relacionado: <code>backward_logica_y_diagnostico_run7_run8.html</code>, <code>lambda_dist_2dgs_vs_beta.html</code>.</p>
