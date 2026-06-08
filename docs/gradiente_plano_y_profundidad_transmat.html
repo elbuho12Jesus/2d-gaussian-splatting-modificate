@@ -76,7 +76,88 @@ float  c_d   = s.x*Tw.x + s.y*Tw.y + Tw.z;   // PROFUNDIDAD  <- "la profundidad"
 <p class="center">La profundidad es una función <b>afín de la posición en el plano</b> <code>s</code>. La pendiente <code>(Tw.x, Tw.y)</code> = <b>la inclinación del surfel</b>. <code>Tw.z</code> = profundidad en el centro.</p>
 
 
-<h2>2. La intuición geométrica: un plano inclinado</h2>
+<h2>2. Ejemplo de juguete: las dimensiones de UN surfel y qué representan</h2>
+
+<p>Cada surfel se guarda con estos parámetros crudos (forma <code>(N, ·)</code> para N surfels):</p>
+<table>
+<thead><tr><th>Parámetro</th><th>Dim</th><th>Se guarda como</th><th>Activación → valor usado</th><th>Qué representa</th></tr></thead>
+<tbody>
+<tr><td><code>_xyz</code></td><td><b>3</b></td><td>xyz crudo</td><td>identidad</td><td><b>posición original</b> = centro del surfel en el mundo</td></tr>
+<tr><td><code>_scaling</code></td><td><b>2</b></td><td><b>log</b>(escala)</td><td><code>exp(·)</code>, clamp <code>0.1·extent</code> → <code>(s_u, s_v)</code></td><td><b>medio-ancho del surfel</b> en sus 2 ejes del plano (NO hay 3er eje → es plano)</td></tr>
+<tr><td><code>_rotation</code></td><td><b>4</b></td><td>cuaternión <code>(r,x,y,z)</code></td><td><code>normalize(·)</code> → matriz <b>R 3×3</b></td><td><b>orientación</b>: las 3 columnas de R son los ejes locales (2 tangentes + normal)</td></tr>
+<tr><td><code>_opacity</code></td><td>1</td><td>logit</td><td>sigmoid → <code>o</code></td><td>opacidad base (no entra en T)</td></tr>
+<tr><td><code>_beta</code></td><td>1</td><td>crudo</td><td><code>4·exp(clamp(·,−6,2))</code> → <code>β</code></td><td>forma del kernel <code>(1−ρ)^β</code> (no entra en T)</td></tr>
+</tbody>
+</table>
+<p>La diferencia clave vs un gaussiano 3D: la escala tiene <b>2</b> componentes, no 3 → el surfel es un <b>disco/elipse plano sin grosor</b>. La 3ª dirección (la normal) no se escala (se rellena con 1).</p>
+
+<h3>Surfel concreto, número a número</h3>
+<p>Tomemos un surfel inclinado 30° sobre el eje Y, alargado (3:1), centrado en <code>(1, 0.5, 4)</code>:</p>
+<pre><code>_xyz      = (1.0, 0.5, 4.0)              # posición (centro)
+_scaling  = log(0.30), log(0.10)        # se guarda en log;  exp → (s_u, s_v) = (0.30, 0.10)
+_rotation = (0.9659, 0, 0.2588, 0)      # cuaternión (r,x,y,z), ya ≈ unitario  (30° sobre Y)</code></pre>
+
+<p><b>Paso 1 — el cuaternión se convierte en matriz de rotación R (3×3)</b> (build_rotation):</p>
+<div class="eq">R =
+[ &nbsp;0.866 &nbsp; 0 &nbsp; 0.500 ]<br>
+[ &nbsp;0.000 &nbsp; 1 &nbsp; 0.000 ]<br>
+[ −0.500 &nbsp; 0 &nbsp; 0.866 ]</div>
+<p>Las <b>columnas</b> de R son los ejes locales del surfel (vectores unitarios):</p>
+<ul>
+<li><span class="hl3">tu = col 0 = (0.866, 0, −0.5)</span> — 1er eje tangente (en el plano del surfel)</li>
+<li><span class="hl3">tv = col 1 = (0, 1, 0)</span> — 2º eje tangente (vertical aquí)</li>
+<li><span class="hl">normal = col 2 = (0.5, 0, 0.866)</span> — perpendicular al surfel (hacia dónde "mira")</li>
+</ul>
+
+<p><b>Paso 2 — la escala estira esas tangentes</b> (S = diag(s_u, s_v, 1), L = R·S → las columnas de R escaladas):</p>
+<div class="eq">t_u = s_u·tu = 0.30·(0.866,0,−0.5) = (0.260, 0, −0.150)&nbsp;&nbsp; |t_u| = 0.30<br>
+t_v = s_v·tv = 0.10·(0,1,0) = (0, 0.100, 0)&nbsp;&nbsp; |t_v| = 0.10</div>
+<p>Es decir: <code>s_u, s_v</code> son literalmente el <b>radio del surfel en unidades de mundo</b> a lo largo de cada eje. El surfel es la elipse <code>{ centro + u·t_u + v·t_v : u²+v² ≤ 1 }</code> (el borde <code>ρ=1</code> del kernel).</p>
+
+<h3>Paso 3 — dónde caen las esquinas → aparece la profundidad</h3>
+<p>Mapeando coords locales <code>(u,v)</code> del borde a mundo (<code>world = xyz + u·t_u + v·t_v</code>):</p>
+<table>
+<thead><tr><th>(u, v)</th><th></th><th>punto en el mundo</th><th>profundidad z</th></tr></thead>
+<tbody>
+<tr><td>(0, 0)</td><td>centro</td><td>(1.000, 0.5, 4.000)</td><td>4.000</td></tr>
+<tr><td>(+1, 0)</td><td>borde +u</td><td>(1.260, 0.5, <span class="hl">3.850</span>)</td><td><span class="hl">3.850 ← más cerca</span></td></tr>
+<tr><td>(−1, 0)</td><td>borde −u</td><td>(0.740, 0.5, <span class="hl">4.150</span>)</td><td><span class="hl">4.150 ← más lejos</span></td></tr>
+<tr><td>(0, +1)</td><td>borde +v</td><td>(1.000, 0.6, 4.000)</td><td>4.000 (sin cambio)</td></tr>
+<tr><td>(0, −1)</td><td>borde −v</td><td>(1.000, 0.4, 4.000)</td><td>4.000 (sin cambio)</td></tr>
+</tbody>
+</table>
+
+<svg viewBox="0 0 900 280" font-family="JetBrains Mono, monospace" font-size="12">
+  <rect x="0" y="0" width="900" height="280" fill="#0b0d13" rx="10"/>
+  <text x="20" y="26" fill="#9aa3b2">Vista lateral (plano X-Z): el surfel inclinado 30° y su rango de profundidad</text>
+  <text x="20" y="150" fill="#9aa3b2">z (prof.)</text>
+  <circle cx="450" cy="150" r="5" fill="#6ea8fe"/>
+  <text x="458" y="146" fill="#6ea8fe">centro (1, 0.5, 4)</text>
+  <line x1="320" y1="95" x2="580" y2="205" stroke="#7ee787" stroke-width="5"/>
+  <circle cx="580" cy="205" r="6" fill="#ff7b72"/>
+  <text x="585" y="225" fill="#ff7b72">+u  z=3.85 (cerca)</text>
+  <circle cx="320" cy="95" r="6" fill="#ff7b72"/>
+  <text x="150" y="90" fill="#ff7b72">−u  z=4.15 (lejos)</text>
+  <line x1="450" y1="150" x2="510" y2="115" stroke="#ffb454" stroke-width="2" marker-end="url(#nn)"/>
+  <text x="515" y="110" fill="#ffb454">normal</text>
+  <line x1="450" y1="150" x2="540" y2="188" stroke="#7ee787" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#nn2)"/>
+  <text x="545" y="190" fill="#7ee787">t_u (|.|=0.30)</text>
+  <line x1="600" y1="205" x2="640" y2="205" stroke="#ff7b72" stroke-dasharray="3 3"/>
+  <line x1="340" y1="95" x2="640" y2="95" stroke="#ff7b72" stroke-dasharray="3 3"/>
+  <line x1="640" y1="95" x2="640" y2="205" stroke="#ff7b72" stroke-width="2"/>
+  <text x="650" y="155" fill="#ff7b72">Δz = 0.30</text>
+  <text x="650" y="172" fill="#9aa3b2">= 2·s_u·sin30°</text>
+  <defs>
+    <marker id="nn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ffb454"/></marker>
+    <marker id="nn2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7ee787"/></marker>
+  </defs>
+  <text x="450" y="262" fill="#9aa3b2" text-anchor="middle">El eje u del surfel barre una franja de profundidad de 0.30; el eje v (perpendicular al papel) NO cambia z.</text>
+</svg>
+
+<div class="note ok-box"><b>Esto es el acoplamiento, ya visible en los parámetros crudos:</b> el mismo surfel, por estar <b>rotado</b> (R) y tener <b>tamaño</b> (s_u), ocupa un <b>rango de profundidades</b> (3.85→4.15). La profundidad de cada punto = <code>z</code> de <code>xyz + u·t_u + v·t_v</code>, que depende de rotación × escala × posición a la vez. Cuando el rasterizer empaqueta los tres parámetros en <code>T</code>, la fila <code>Tw</code> hereda justo esta dependencia (<code>c_d = s.x·Tw.x + s.y·Tw.y + Tw.z</code>). <b>Rotación más rasante ⇒ más rango de profundidad para el mismo tamaño ⇒ más acoplamiento.</b></p></div>
+
+
+<h2>3. La intuición geométrica: un plano inclinado</h2>
 
 <p>Si el surfel mirara de frente a la cámara, <code>(Tw.x, Tw.y)=(0,0)</code> → toda la silueta está a la misma profundidad <code>Tw.z</code>. Pero los surfels del fondo (césped/cielo vistos de refilón) están <b>muy inclinados</b> → <code>Tw.x, Tw.y</code> grandes → moverte un poco en <code>s</code> (en el plano de imagen) cambia mucho <code>c_d</code> (la profundidad).</p>
 
@@ -108,7 +189,7 @@ float  c_d   = s.x*Tw.x + s.y*Tw.y + Tw.z;   // PROFUNDIDAD  <- "la profundidad"
 <p class="figcap">Dos píxeles vecinos golpean el surfel en puntos <code>s</code> distintos; como el plano está inclinado, esos puntos están a profundidades distintas. <b>Plano y profundidad NO son independientes:</b> los liga la misma T.</p>
 
 
-<h2>3. El backward: dónde se mezclan plano y profundidad</h2>
+<h2>4. El backward: dónde se mezclan plano y profundidad</h2>
 
 <p>En la rama <code>rho3d</code> (splats grandes) el gradiente del punto de impacto <code>s</code> nace ya <b>mezclando</b> los dos términos:</p>
 <pre><code>// backward.cu, rama rho3d
@@ -168,7 +249,7 @@ dL_dTw = pix.x*dL_dk + pix.y*dL_dl  +  <span class="hl">dL_dz * (s.x, s.y, 1)</s
 <p class="center big">Moraleja: en la rama <code>rho3d</code>, plano y profundidad están <span class="hl">totalmente acoplados</span> a través de T.</p>
 
 
-<h2>4. La rama <code>rho2d</code> (splats pequeños): aquí SÍ se separan</h2>
+<h2>5. La rama <code>rho2d</code> (splats pequeños): aquí SÍ se separan</h2>
 
 <p>Para surfels sub-píxel (gana el filtro de 2 px, <code>rho2d &lt; rho3d</code>) el reparto es distinto:</p>
 <pre><code>// backward.cu, rama rho2d
@@ -182,7 +263,7 @@ dL_dtransMat[8] +=       dL_dz;</code></pre>
 <p>Aquí el gradiente del plano (<code>dL_d_rho·∂ρ/∂d</code>) no entra en T directamente: se escribe en <code>dL_dmean2D</code>. Pero <b>no se pierde</b>: <code>compute_transmat_aabb</code> lo lee después y lo mete en <code>dL_dT</code> (ver doc del backward, Hallazgo #3) → de ahí a posición/escala/rotación. La profundidad va por separado a <code>Tw</code>. <b>El acoplamiento plano↔profundidad existe igual</b>, solo que se materializa en <code>compute_transmat_aabb</code> en vez de en <code>renderCUDA</code>.</p>
 
 
-<h2>5. La señal de densificación sale de ese acoplamiento</h2>
+<h2>6. La señal de densificación sale de ese acoplamiento</h2>
 
 <p>Al final del preprocess, el buffer <code>dL_dmean2D</code> se <b>reescribe</b> (tras haberse usado para la geometría) con:</p>
 <pre><code>float depth = transMats[idx*9+8];                    // = Tw.z (profundidad del centro)
@@ -191,7 +272,7 @@ dL_dmean2D.y = dL_dtransMat[idx*9+5] * depth * 0.5*H; // Tv.z · profundidad</co
 <p>La <b>señal de error que MCMC usa para densificar</b> (<code>xyz_gradient_accum</code>) se construye de las componentes <i>z</i> de <code>Tu</code> y <code>Tv</code> multiplicadas por la <b>profundidad</b>. Es decir: la magnitud con la que MCMC decide "aquí falta detalle" está <b>escalada por la profundidad del splat</b> — los splats lejanos (fondo) entran en la señal con un peso distinto a los cercanos. Otro punto donde plano y profundidad están entrelazados.</p>
 
 
-<h2>6. Implicaciones prácticas (para este proyecto)</h2>
+<h2>7. Implicaciones prácticas (para este proyecto)</h2>
 
 <table>
 <thead><tr><th>Observación</th><th>Por el acoplamiento T</th></tr></thead>
