@@ -399,19 +399,20 @@ renderCUDA(
 			// Beta kernel backward extensions (STABLE)
 			// ===============================
 
-			// FIX 2: stop beta backprop if beta is too small
-			if (beta_j < 0.1f) {
-				continue;
+			// FIX #2: el umbral beta<0.1 solo debe saltar el gradiente de BETA
+			// (para evitar NaN), NO la geometría/opacidad. Antes el `continue`
+			// saltaba TODO el resto del cuerpo del bucle -> congelaba posición/
+			// escala/rotación/opacidad de esos splats (ver doc backward_*).
+			if (beta_j >= 0.1f) {
+				// ∂α/∂beta = α * log(1 - rho)
+				float d_alpha_d_beta = alpha * logf(one_minus);
+				float grad_beta = dL_dalpha * d_alpha_d_beta;
+
+				// clamp beta gradient to avoid NaN explosion
+				grad_beta = fminf(fmaxf(grad_beta, -1e-3f), 1e-3f);
+
+				atomicAdd(&dL_dbeta[global_id], grad_beta);
 			}
-
-			// ∂α/∂beta = α * log(1 - rho)
-			float d_alpha_d_beta = alpha * logf(one_minus);
-			float grad_beta = dL_dalpha * d_alpha_d_beta;
-
-			// FIX 1: clamp beta gradient to avoid NaN explosion
-			grad_beta = fminf(fmaxf(grad_beta, -1e-3f), 1e-3f);
-
-			atomicAdd(&dL_dbeta[global_id], grad_beta);
 
 			// ∂α/∂rho = -opa * beta * (1 - rho)^{beta - 1}
 			
@@ -435,17 +436,25 @@ renderCUDA(
 			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 
-			// Helpful reusable temporary variables
-			const float dL_dG = nor_o.w * dL_dalpha;
+			// (FIX #1: el antiguo `dL_dG = nor_o.w * dL_dalpha` ya no se usa;
+			//  la rama rho3d ahora deriva via d_alpha_d_rho. La opacidad usa G*dL_dalpha.)
 #if RENDER_AXUTILITY
-			dL_dz += alpha * T * dL_ddepth; 
+			dL_dz += alpha * T * dL_ddepth;
 #endif
 
 			if (rho3d <= rho2d) {
 				// Update gradients w.r.t. covariance of Gaussian 3x3 (T)
+				// FIX #1: derivada del kernel BETA, no gaussiana.
+				//   antes: dG/ds = -G*s  (= d/ds de exp(-0.5*rho), GAUSSIANO)
+				//   ahora: dL/ds = dL/dalpha * (dalpha/drho) * (drho/ds)
+				//          con drho/ds = 2*s  y  dalpha/drho = d_alpha_d_rho = -beta*alpha/(1-rho)
+				//   equivale a la oficial gsplat: v_sigma = -v_alpha*opac*beta*(1-sigma)^(beta-1).
+				//   dL_dalpha ya incluye el término de fondo (l. ~435), así que esto
+				//   tambien corrige el hallazgo #3 para esta rama.
+				const float dL_drho_full = dL_dalpha * d_alpha_d_rho;
 				const float2 dL_ds = {
-					dL_dG * -G * s.x + dL_dz * Tw.x,
-					dL_dG * -G * s.y + dL_dz * Tw.y
+					dL_drho_full * 2.0f * s.x + dL_dz * Tw.x,
+					dL_drho_full * 2.0f * s.y + dL_dz * Tw.y
 				};
 				const float3 dz_dTw = {s.x, s.y, 1.0};
 				const float dsx_pz = dL_ds.x / p.z;
