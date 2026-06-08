@@ -420,14 +420,6 @@ renderCUDA(
 			// dα/dρ = -β * α / (1 - ρ)
 			float d_alpha_d_rho = (-beta_j) * alpha / one_minus;
 
-
-			// Reemplaza el factor gaussiano antiguo:
-			// antes: dL_dG = nor_o.w * dL_dalpha;
-			// ahora:
-			float dL_d_rho = dL_dalpha * d_alpha_d_rho;
-
-
-
 			// Account for fact that alpha also influences how much of
 			// the background color is added if nothing left to blend
 			float bg_dot_dpixel = 0;
@@ -435,9 +427,14 @@ renderCUDA(
 				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
 			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
-
-			// (FIX #1: el antiguo `dL_dG = nor_o.w * dL_dalpha` ya no se usa;
-			//  la rama rho3d ahora deriva via d_alpha_d_rho. La opacidad usa G*dL_dalpha.)
+			// FIX #3: dL_d_rho se calcula DESPUES del termino de fondo. La rama
+			// rho2d escribe este gradiente en dL_dmean2D, y compute_transmat_aabb
+			// lo LEE (antes del overwrite de densificacion) y lo propaga a
+			// means/scales/rots -> por tanto NO es inerte: debe incluir el fondo,
+			// igual que la rama rho3d. Antes se calculaba ANTES del termino de fondo.
+			// (El antiguo `dL_dG = nor_o.w * dL_dalpha` se eliminó: ambas ramas
+			//  derivan ahora via d_alpha_d_rho; la opacidad usa G*dL_dalpha.)
+			float dL_d_rho = dL_dalpha * d_alpha_d_rho;
 #if RENDER_AXUTILITY
 			dL_dz += alpha * T * dL_ddepth;
 #endif
@@ -446,15 +443,13 @@ renderCUDA(
 				// Update gradients w.r.t. covariance of Gaussian 3x3 (T)
 				// FIX #1: derivada del kernel BETA, no gaussiana.
 				//   antes: dG/ds = -G*s  (= d/ds de exp(-0.5*rho), GAUSSIANO)
-				//   ahora: dL/ds = dL/dalpha * (dalpha/drho) * (drho/ds)
-				//          con drho/ds = 2*s  y  dalpha/drho = d_alpha_d_rho = -beta*alpha/(1-rho)
+				//   ahora: dL/ds = dL_d_rho * (drho/ds), con drho/ds = 2*s
+				//          y dL_d_rho = dL_dalpha * d_alpha_d_rho (d_alpha_d_rho = -beta*alpha/(1-rho)).
 				//   equivale a la oficial gsplat: v_sigma = -v_alpha*opac*beta*(1-sigma)^(beta-1).
-				//   dL_dalpha ya incluye el término de fondo (l. ~435), así que esto
-				//   tambien corrige el hallazgo #3 para esta rama.
-				const float dL_drho_full = dL_dalpha * d_alpha_d_rho;
+				//   dL_d_rho ya es post-fondo (FIX #3), comun a ambas ramas.
 				const float2 dL_ds = {
-					dL_drho_full * 2.0f * s.x + dL_dz * Tw.x,
-					dL_drho_full * 2.0f * s.y + dL_dz * Tw.y
+					dL_d_rho * 2.0f * s.x + dL_dz * Tw.x,
+					dL_d_rho * 2.0f * s.y + dL_dz * Tw.y
 				};
 				const float3 dz_dTw = {s.x, s.y, 1.0};
 				const float dsx_pz = dL_ds.x / p.z;

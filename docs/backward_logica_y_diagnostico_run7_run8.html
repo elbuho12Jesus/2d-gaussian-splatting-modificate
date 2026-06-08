@@ -234,39 +234,75 @@ if (beta_j < 0.1f) {
 </div>
 
 
-<h2>6. Hallazgo #3 — orden del término de fondo vs <code>dL_d_rho</code> <span class="tag inert">divergencia inerte</span></h2>
+<h2>6. Hallazgo #3 — orden del término de fondo vs <code>dL_d_rho</code> <span class="tag bug">bug real — CORREGIDO</span></h2>
 
-<p>El término de "fondo que se asoma cuando no queda α por delante" (l.432–435) se suma a <code>dL_dalpha</code> <b>después</b> de calcular <code>dL_d_rho</code> (l.426):</p>
-<pre><code>float dL_d_rho = dL_dalpha * d_alpha_d_rho;     // l.426  — SIN el término de fondo todavía
+<div class="note danger-box"><b>Corrección de una afirmación anterior de este documento.</b> En la primera versión dije que #3 era "inerte porque <code>dL_dmean2D</code> se sobrescribe". <b>Es FALSO.</b> Al releer el preprocess paso a paso: <code>compute_transmat_aabb</code> <b>LEE</b> <code>dL_dmean2D</code> (l.578) y lo propaga a <code>dL_dT</code> → means/scales/rots <b>ANTES</b> de que el preprocess lo sobrescriba (l.683). Es decir, el gradiente en el plano de la rama 2D <b>sí llega a la geometría 3D</b>. #3 es un bug real y se ha corregido.</p></div>
+
+<p>El término de "fondo que se asoma cuando no queda α por delante" se suma a <code>dL_dalpha</code> <b>después</b> de calcular <code>dL_d_rho</code> (en el código original):</p>
+<pre><code>float dL_d_rho = dL_dalpha * d_alpha_d_rho;     // ANTES — SIN el término de fondo
 ...
-dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;   // l.435 — término de fondo
-const float dL_dG = nor_o.w * dL_dalpha;        // l.439 — este SÍ lleva el fondo</code></pre>
-<p>Es decir, <code>dL_dG</code> (rama 3D) incluye el fondo, pero <code>dL_d_rho</code> (rama 2D) <b>no</b>. En el 2DGS original las dos ramas usan <code>dL_dG</code> (con fondo), así que esto es una divergencia. <b>Pero es inerte:</b> <code>dL_d_rho</code> solo alimenta <code>dL_dmean2D</code> (l.482–483), y <code>dL_dmean2D</code> se <b>sobrescribe entero</b> en el preprocess (ver §7). El término de fondo que falta en <code>dL_d_rho</code> nunca llega a ningún parámetro. No hay que tocarlo con prisa, pero conviene anotarlo para no confundirse al leer el código.</p>
+dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;   // término de fondo (llega tarde)</code></pre>
+<p>El término de fondo <code>(-T_final/(1−α))·(bg·∂L/∂pix)</code> pesa justo donde la cobertura es fina y queda transparencia al final (T_final alto) = <b>cielo/césped del fondo</b>. Si <code>dL_d_rho</code> se calcula antes, el gradiente de posición en el plano de los splats pequeños del fondo pierde ese término.</p>
+
+<p><b>Fix:</b> mover el cálculo de <code>dL_d_rho</code> a <b>después</b> del término de fondo, compartido por ambas ramas (rho2d y rho3d). Trivial y correcto.</p>
 
 
-<h2>7. El "hack" de <code>dL_dmean2D</code> — por qué la rama 2D no entrena posición</h2>
+<h2>7. La doble vida de <code>dL_dmean2D</code> — geometría primero, densificación después</h2>
 
-<p>Al final del preprocess (l.682–684) hay esto, heredado del 2DGS oficial:</p>
-<pre><code>// preprocessCUDA l.682-684  — "hack the gradient here for densitification"
-float depth = transMats[idx * 9 + 8];
-dL_dmean2Ds[idx].x = dL_dtransMats[idx*9+2] * depth * 0.5 * W;   // SOBRESCRIBE
+<p>La clave que me hizo equivocarme antes: <code>dL_dmean2D</code> se usa <b>dos veces</b> en el preprocess, en este orden:</p>
+
+<svg viewBox="0 0 900 230" font-family="JetBrains Mono, monospace" font-size="12.5">
+  <rect x="0" y="0" width="900" height="230" fill="#0b0d13" rx="10"/>
+  <rect x="30" y="30" width="240" height="60" fill="#12151d" stroke="#6ea8fe" rx="8"/>
+  <text x="150" y="55" fill="#e6e8ee" text-anchor="middle">renderCUDA (rama rho2d)</text>
+  <text x="150" y="76" fill="#9aa3b2" text-anchor="middle">escribe dL_dmean2D += dL_d_rho·∂ρ/∂d</text>
+  <text x="455" y="55" fill="#7ee787" text-anchor="middle" font-size="22">①</text>
+  <line x1="270" y1="60" x2="360" y2="60" stroke="#7ee787" stroke-width="2" marker-end="url(#a3)"/>
+  <rect x="360" y="20" width="270" height="80" fill="#12151d" stroke="#7ee787" rx="8"/>
+  <text x="495" y="44" fill="#e6e8ee" text-anchor="middle">compute_transmat_aabb (l.578)</text>
+  <text x="495" y="64" fill="#9aa3b2" text-anchor="middle">LEE dL_dmean2D → dL_dT</text>
+  <text x="495" y="82" fill="#7ee787" text-anchor="middle">→ means / scales / rots ✓</text>
+  <line x1="495" y1="100" x2="495" y2="135" stroke="#7ee787" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="495" y="155" fill="#7ee787" text-anchor="middle">gradiente REAL de geometría</text>
+  <text x="700" y="44" fill="#ffb454" text-anchor="middle" font-size="22">②</text>
+  <line x1="630" y1="55" x2="700" y2="55" stroke="#ffb454" stroke-width="2" marker-end="url(#a3b)"/>
+  <rect x="700" y="25" width="180" height="70" fill="#12151d" stroke="#ffb454" rx="8"/>
+  <text x="790" y="48" fill="#e6e8ee" text-anchor="middle">preprocess l.683</text>
+  <text x="790" y="67" fill="#9aa3b2" text-anchor="middle">SOBRESCRIBE</text>
+  <text x="790" y="84" fill="#ffb454" text-anchor="middle">señal densif.</text>
+  <line x1="790" y1="95" x2="790" y2="135" stroke="#ffb454" stroke-width="2" marker-end="url(#a3b)"/>
+  <text x="790" y="155" fill="#ffb454" text-anchor="middle">xyz_gradient_accum (MCMC)</text>
+  <defs>
+    <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7ee787"/></marker>
+    <marker id="a3b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ffb454"/></marker>
+  </defs>
+  <text x="450" y="200" fill="#9aa3b2" text-anchor="middle">① el valor acumulado por el render SÍ entrena la geometría; ② SÓLO DESPUÉS se machaca para reusar el buffer como señal de densificación.</text>
+</svg>
+
+<pre><code>// preprocessCUDA — ORDEN dentro del kernel, por splat
+compute_transmat_aabb(idx, ...);   // ① LEE dL_dmean2Ds[idx] (l.578), lo mete en dL_dT
+                                   //    -> dL_dM -> dL_dmeans/scales/rots
+...
+// "hack the gradient here for densitification"  (② DESPUÉS)
+float depth = transMats[idx*9+8];
+dL_dmean2Ds[idx].x = dL_dtransMats[idx*9+2] * depth * 0.5 * W;   // ② SOBRESCRIBE
 dL_dmean2Ds[idx].y = dL_dtransMats[idx*9+5] * depth * 0.5 * H;</code></pre>
-<p><code>dL_dmean2D</code> se <b>recalcula desde la matriz transMat</b> y machaca lo que <code>renderCUDA</code> había acumulado. Consecuencias, importantes para entender el sistema:</p>
+
 <ul>
-<li><code>dL_dmean2D</code> <b>no es</b> el gradiente que mueve el splat — eso lo hace <code>dL_dmean3D</code> vía transMat. <code>dL_dmean2D</code> es solo la <b>señal de densificación</b> (el <code>xyz_gradient_accum</code> / error que usa MCMC, mencionado en CLAUDE.md).</li>
-<li>Por tanto, en la <b>rama 2D</b> (splats sub-píxel), el gradiente <i>en el plano</i> calculado en l.482–483 se descarta para todo: ni mueve el splat (lo sobrescribe el hack) ni entrena posición 3D (la rama 2D solo manda profundidad a transMat, l.486–488). Esto <b>es así también en el 2DGS oficial</b> — no es un bug introducido aquí, es una propiedad conocida del surfel 2D: los splats sub-píxel apenas reciben gradiente de posición en plano.</li>
+<li><b>①</b> El <code>dL_dmean2D</code> que el render acumuló (incluida la contribución de la rama rho2d, <code>dL_d_rho·∂ρ/∂d</code>) <b>se lee y se propaga a la geometría 3D</b> dentro de <code>compute_transmat_aabb</code> (l.578–593 → l.611–627). Es gradiente real de posición/escala/rotación. <span class="hl2">Por eso #3 NO es inerte.</span></li>
+<li><b>②</b> Solo <i>después</i>, el mismo buffer se <b>sobrescribe</b> con un valor derivado de transMat·depth, que es la <b>señal de densificación</b> (el <code>xyz_gradient_accum</code> que lee MCMC en Python). Reúso del buffer, no anulación del gradiente.</li>
 </ul>
-<p>Para el problema del fondo, la implicación es: la geometría del fondo se entrena <b>por la rama 3D</b> (splats grandes), que es justo donde está el <b>Hallazgo #1</b> (derivada gaussiana en vez de beta).</p>
+<p>La geometría del fondo se entrena por <b>ambas</b> ramas: la rho3d directamente vía transMat (Hallazgo #1), y la rho2d vía este camino <code>dL_dmean2D → dL_dT</code> (Hallazgo #3). Las dos necesitaban el término de fondo; ahora las dos lo tienen.</p>
 
 
 <h2>8. Veredicto</h2>
 
 <div class="card danger-box">
-<p class="big">Lo que el backward sí tiene mal (a corregir y medir):</p>
+<p class="big">Lo que el backward tenía mal — los 3 CORREGIDOS (compila + smoke test verde):</p>
 <ol>
-<li><b>#1 rama <code>rho3d</code> con derivada gaussiana</b> (<code>-G·s</code> en vez de <code>-2β·G/(1−ρ)·s</code>). Afecta a la geometría de <b>todos</b> los splats grandes — la población que cubre el fondo. Impacto amortiguado por Adam en escala, pero sesga la <i>forma</i> del gradiente. <b>Es el candidato más serio.</b></li>
-<li><b>#2 <code>continue</code> con β&lt;0.1</b> congela geometría+opacidad, no solo β. Bug claro pero solo el 0.10% de splats lo tocan.</li>
-<li><b>#3 orden del término de fondo</b> en <code>dL_d_rho</code>: divergencia inerte (la consume un valor sobrescrito).</li>
+<li><b>#1 rama <code>rho3d</code> con derivada gaussiana</b> (<code>-G·s</code> en vez de <code>-2β·G/(1−ρ)·s</code>). Afecta a la geometría de <b>todos</b> los splats grandes — la población que cubre el fondo. Impacto amortiguado por Adam en escala, pero sesga la <i>forma</i> del gradiente. <b>Es el candidato más serio.</b> <span class="hl2">Fix: deriva vía <code>dL_d_rho·2·s</code>.</span></li>
+<li><b>#2 <code>continue</code> con β&lt;0.1</b> congelaba geometría+opacidad, no solo β. Bug claro pero solo el 0.10% de splats lo tocan. <span class="hl2">Fix: el umbral solo envuelve el grad de β.</span></li>
+<li><b>#3 orden del término de fondo</b> en <code>dL_d_rho</code>: <b>NO inerte</b> (corrijo afirmación previa) — el valor llega a means/scales/rots vía <code>compute_transmat_aabb</code> antes del overwrite. Afecta la posición en plano de los splats pequeños del fondo. <span class="hl2">Fix: <code>dL_d_rho</code> se calcula tras el término de fondo.</span></li>
 </ol>
 </div>
 
@@ -277,8 +313,9 @@ dL_dmean2Ds[idx].y = dL_dtransMats[idx*9+5] * depth * 0.5 * H;</code></pre>
 
 <h3>Recomendación de orden</h3>
 <ul>
-<li><b>Barato y aislado primero:</b> arreglar #1 (cambiar <code>-G*s</code> por <code>-G*s * 2*beta_j/one_minus</code> en l.447–448) y #2 (mover el <code>continue</code>). Es C++ → <b>recompilar el rasterizer</b> (<code>pip install --force-reinstall --no-deps .../diff-surfel-rasterization</code>). Lanzar un run de control idéntico a run7 y mirar si el <b>fondo en <code>test/vis/</code></b> mejora y si el pico de test sube. Coste casi nulo, y resuelve la duda "¿era el backward?".</li>
-<li><b>Si el control no mueve el test</b> (lo más probable según run8): confirma definitivamente que el techo es estructural → la palanca real es <b>migración a gsplat/3D</b> (#5b) o, más barato, <b>early-stop ~30k</b> (el test SIEMPRE pica ahí; la 2ª mitad solo memoriza — vale para todos los runs 4–8).</li>
+<li><b>Hecho:</b> #1, #2 y #3 corregidos en <code>backward.cu</code>; compila en local (CUDA 11.8) + smoke test verde (gradientes finitos con fondo activo; los splats β&lt;0.1 ya reciben grad de geometría/opacidad; grad de β sigue 0). <b>La build local solo valida sintaxis.</b></li>
+<li><b>Siguiente (usuario):</b> <b>recompilar el rasterizer en el servidor</b> (CUDA 12.8/sm_120, build int64) → <code>docker compose exec surfel_env pip install --force-reinstall --no-deps /workspace/submodules/diff-surfel-rasterization</code>. Lanzar control idéntico a run7 y mirar si el <b>fondo en <code>test/vis/</code></b> mejora y si el pico de test sube. Resuelve la duda "¿era el backward?".</li>
+<li><b>Si el control no mueve el test</b> (lo más probable según run8): confirma que el techo es estructural → la palanca real es <b>migración a gsplat/3D</b> (#5b) o, más barato, <b>early-stop ~30k</b> (el test SIEMPRE pica ahí; la 2ª mitad solo memoriza — vale para todos los runs 4–8).</li>
 </ul>
 
 <p class="meta">Documento generado el 2026-06-08. Fuentes: <code>logs/flowers7.log</code>, <code>logs/flowers8.log</code>, plys <code>iteration_50000</code> de <code>flowers_beta_run7</code> (7.5M) y <code>run8</code> (9M), <code>cuda_rasterizer/backward.cu</code> + <code>forward.cu</code>, <code>scene/gaussian_model.py</code>. β medido sobre <code>4·exp(clamp(_beta,−6,2))</code>.</p>
