@@ -251,16 +251,58 @@ dL_dTw = pix.x*dL_dk + pix.y*dL_dl  +  <span class="hl">dL_dz * (s.x, s.y, 1)</s
 
 <h2>5. La rama <code>rho2d</code> (splats pequeños): qué pasa de verdad</h2>
 
-<p>Recuerda el forward: <code>rho = <b>min</b>(rho3d, rho2d)</code>. Hay dos "huellas" compitiendo por píxel:</p>
-<div class="eq">rho3d = s.x² + s.y²&nbsp;&nbsp;(huella analítica real del surfel)<br>
-rho2d = FilterInvSquare·(d.x² + d.y²) = <b>2·|d|²</b>&nbsp;&nbsp;(filtro pasa-bajo, <code>d</code> = píxeles desde el centro)</div>
-<p><code>rho2d</code> es un <b>disco de tamaño fijo en pantalla</b>: vale 1 (= borde del kernel) cuando <code>|d| = 1/√2 ≈ 0.707 px</code>, sin importar el tamaño real del surfel. Es el suelo anti-aliasing: ningún splat puede renderizar más pequeño que ~0.7 px. La rama <code>rho2d</code> se toma cuando ese disco fijo es <i>más estrecho</i> que la huella analítica → en los splats <b>pequeños/lejanos</b>.</p>
+<p>Recuerda el forward: <code>rho = <b>min</b>(rho3d, rho2d)</code>. <code>rho</code> es la "distancia al centro" que entra en el kernel <code>(1−rho)^β</code>: <code>rho=0</code> en el centro, <code>rho=1</code> en el borde. Hay <b>dos formas</b> de medir esa distancia y el forward se queda con la menor.</p>
+
+<h3>Primero: definamos cada símbolo</h3>
+<table>
+<thead><tr><th>Símbolo</th><th>Qué es</th><th>Unidades</th></tr></thead>
+<tbody>
+<tr><td><code>s</code> (s.x, s.y)</td><td>punto donde el rayo del píxel corta el surfel, en las <b>coordenadas locales del surfel</b> (u,v), normalizadas para que el <b>borde del kernel esté en |s|=1</b>. Centro: s=(0,0).</td><td>adimensional (0 centro → 1 borde)</td></tr>
+<tr><td><code>d</code> (d.x, d.y)</td><td>desplazamiento <b>en píxeles</b> entre el píxel que se pinta y el <b>centro proyectado</b> del surfel en la pantalla: <code>d = pix − centro_px</code>.</td><td>píxeles</td></tr>
+<tr><td><code>f</code></td><td><b>distancia focal EN PÍXELES.</b> En el rasterizer <code>f = ancho_img / (2·tan(fov/2))</code>. Convierte un tamaño del mundo, a profundidad z, en píxeles. <code>f=500 px</code> = ejemplo de FOV medio (con imagen de 1000 px de ancho ⇒ FOV ≈ 90°). <b>No es metros</b>, es cuántos píxeles "mide" la distancia focal.</td><td>píxeles</td></tr>
+<tr><td><code>r_px</code></td><td><b>el radio del surfel medido en píxeles en la pantalla</b> = cuántos píxeles hay del centro al borde del surfel cuando lo proyectas. Es su "tamaño aparente".</td><td>píxeles</td></tr>
+</tbody>
+</table>
+
+<div class="eq">rho3d = s.x² + s.y² = |s|²&nbsp;&nbsp;(huella REAL del surfel, en coords locales)<br>
+rho2d = 2·(d.x² + d.y²) = 2·|d|²&nbsp;&nbsp;(filtro pasa-bajo fijo, en píxeles)</div>
+
+<h3>Qué mide <code>r_px</code>, y por qué <code>r_px = f·s/z</code> (proyección pinhole)</h3>
+<p>Un surfel de radio <code>s</code> (en el mundo), a profundidad <code>z</code>, se ve más pequeño cuanto más lejos. Por triángulos semejantes de la cámara pinhole, su radio en pantalla es <code>r_px = f·s/z</code>:</p>
+
+<svg viewBox="0 0 900 270" font-family="JetBrains Mono, monospace" font-size="12">
+  <rect x="0" y="0" width="900" height="270" fill="#0b0d13" rx="10"/>
+  <!-- eje optico -->
+  <line x1="70" y1="135" x2="840" y2="135" stroke="#2a2f3c" stroke-dasharray="4 4"/>
+  <text x="600" y="128" fill="#9aa3b2">eje óptico</text>
+  <!-- camara -->
+  <circle cx="70" cy="135" r="6" fill="#6ee7ff"/><text x="40" y="125" fill="#6ee7ff">cámara</text>
+  <!-- plano de imagen a distancia f -->
+  <line x1="250" y1="55" x2="250" y2="215" stroke="#7ee787" stroke-width="2"/>
+  <text x="255" y="50" fill="#7ee787">plano de imagen</text>
+  <line x1="70" y1="240" x2="250" y2="240" stroke="#9aa3b2"/><text x="135" y="258" fill="#9aa3b2">f (px)</text>
+  <!-- surfel lejano a profundidad z, radio s -->
+  <line x1="650" y1="80" x2="650" y2="190" stroke="#ffb454" stroke-width="4"/>
+  <text x="660" y="135" fill="#ffb454">surfel</text>
+  <text x="610" y="75" fill="#ffb454">radio s</text>
+  <line x1="70" y1="200" x2="650" y2="200" stroke="#9aa3b2"/><text x="330" y="218" fill="#9aa3b2">z (profundidad, px-equiv)</text>
+  <!-- rayos al borde del surfel -->
+  <line x1="70" y1="135" x2="650" y2="80"  stroke="#ff7b72" stroke-width="1.5"/>
+  <line x1="70" y1="135" x2="650" y2="190" stroke="#ff7b72" stroke-width="1.5"/>
+  <!-- r_px en el plano de imagen -->
+  <line x1="250" y1="118" x2="250" y2="152" stroke="#ff7b72" stroke-width="5"/>
+  <text x="150" y="100" fill="#ff7b72">r_px</text>
+  <line x1="180" y1="108" x2="245" y2="128" stroke="#ff7b72" stroke-width="1" marker-end="url(#rp)"/>
+  <defs><marker id="rp" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ff7b72"/></marker></defs>
+  <text x="450" y="255" fill="#7ee787" text-anchor="middle">triángulos semejantes:  r_px / f = s / z  ⇒  r_px = f·s/z</text>
+</svg>
+<p class="figcap">El surfel de radio <code>s</code> proyecta un radio de <code>r_px</code> píxeles. <code>r_px</code> es el factor que traduce píxeles ↔ coords locales: a <code>d</code> píxeles del centro estás en <code>s_local = d / r_px</code> (a <code>d = r_px</code> px llegas al borde, <code>s_local = 1</code>).</p>
 
 <div class="card">
 <p class="big">Ejemplo de juguete — un surfel de césped lejano</p>
-<p>Surfel isótropo de césped, <code>s = 0.05</code> (mundo), a profundidad <code>z = 50</code>, cámara con <code>f = 500 px</code>. Su radio proyectado en pantalla:</p>
+<p>Surfel isótropo de césped, radio <code>s = 0.05</code> (mundo), a profundidad <code>z = 50</code>, cámara con <code>f = 500 px</code> (distancia focal). Su radio en pantalla:</p>
 <div class="eq">r_px = f · s / z = 500 · 0.05 / 50 = <b>0.5 px</b></div>
-<p>En coords locales, el píxel a distancia <code>d</code> (px) del centro cae en <code>s_local = d / r_px = d / 0.5</code>. Comparamos las dos huellas a varias distancias:</p>
+<p>El surfel ocupa medio píxel de radio. Como <code>s_local = d / r_px = d / 0.5</code>, comparamos las dos huellas a varias distancias <code>d</code> (en píxeles desde el centro):</p>
 <table>
 <thead><tr><th><code>d</code> (px)</th><th>rho3d = (d/0.5)²</th><th>rho2d = 2·d²</th><th>min → rama</th></tr></thead>
 <tbody>
@@ -272,6 +314,58 @@ rho2d = FilterInvSquare·(d.x² + d.y²) = <b>2·|d|²</b>&nbsp;&nbsp;(filtro pa
 </table>
 <p>El cruce <code>rho3d = rho2d</code> exige <code>1/r_px² = 2</code>, es decir <code>r_px = 0.707 px</code>. Como nuestro surfel proyecta <b>0.5 px &lt; 0.707</b>, <span class="hl">rho2d gana SIEMPRE</span> → la huella analítica <b>nunca se usa</b>. El surfel se dibuja como el disco fijo de 0.7 px, da igual su forma real.</p>
 </div>
+
+<h3>Dibujo de la primitiva: coords locales (s) ↔ rejilla de píxeles (d)</h3>
+<svg viewBox="0 0 900 340" font-family="JetBrains Mono, monospace" font-size="12">
+  <rect x="0" y="0" width="900" height="340" fill="#0b0d13" rx="10"/>
+
+  <!-- PANEL IZQ: coords locales del surfel -->
+  <text x="40" y="30" fill="#e6e8ee">① El surfel en SUS coords locales (s)</text>
+  <!-- ejes -->
+  <line x1="60" y1="190" x2="380" y2="190" stroke="#2a2f3c"/>
+  <line x1="220" y1="50" x2="220" y2="320" stroke="#2a2f3c"/>
+  <text x="385" y="194" fill="#9aa3b2">u = s.x</text>
+  <text x="226" y="62" fill="#9aa3b2">v = s.y</text>
+  <!-- circulo rho=1 (borde del kernel) -->
+  <circle cx="220" cy="190" r="120" fill="#7ee787" opacity="0.10" stroke="#7ee787" stroke-width="2"/>
+  <text x="300" y="120" fill="#7ee787">borde |s|=1 (ρ=1)</text>
+  <!-- centro -->
+  <circle cx="220" cy="190" r="4" fill="#6ea8fe"/><text x="226" y="208" fill="#6ea8fe">centro s=(0,0)</text>
+  <!-- punto de impacto s -->
+  <circle cx="285" cy="140" r="5" fill="#ffb454"/>
+  <line x1="220" y1="190" x2="285" y2="140" stroke="#ffb454" stroke-width="1.5"/>
+  <text x="290" y="138" fill="#ffb454">s (impacto)</text>
+  <text x="120" y="300" fill="#9aa3b2">rho3d = |s|²</text>
+
+  <!-- PANEL DER: rejilla de pixeles -->
+  <text x="500" y="30" fill="#e6e8ee">② El mismo surfel en la PANTALLA (píxeles)</text>
+  <!-- rejilla -->
+  <g stroke="#2a2f3c">
+    <line x1="520" y1="80" x2="860" y2="80"/><line x1="520" y1="130" x2="860" y2="130"/>
+    <line x1="520" y1="180" x2="860" y2="180"/><line x1="520" y1="230" x2="860" y2="230"/>
+    <line x1="520" y1="280" x2="860" y2="280"/>
+    <line x1="570" y1="60" x2="570" y2="300"/><line x1="620" y1="60" x2="620" y2="300"/>
+    <line x1="670" y1="60" x2="670" y2="300"/><line x1="720" y1="60" x2="720" y2="300"/>
+    <line x1="770" y1="60" x2="770" y2="300"/><line x1="820" y1="60" x2="820" y2="300"/>
+  </g>
+  <text x="828" y="300" fill="#9aa3b2">1 px</text>
+  <!-- centro proyectado -->
+  <circle cx="695" cy="180" r="3.5" fill="#6ea8fe"/>
+  <!-- huella REAL del surfel: r_px=0.5px (25px en el dibujo, escala 50px=1px) -->
+  <circle cx="695" cy="180" r="25" fill="#ffb454" opacity="0.30" stroke="#ffb454" stroke-dasharray="3 3"/>
+  <text x="600" y="120" fill="#ffb454">huella real</text>
+  <text x="600" y="135" fill="#ffb454">r_px=0.5px</text>
+  <!-- disco low-pass fijo: 0.707px (35px) -->
+  <circle cx="695" cy="180" r="35" fill="none" stroke="#6ea8fe" stroke-width="2.5"/>
+  <text x="735" y="150" fill="#6ea8fe">disco fijo</text>
+  <text x="735" y="165" fill="#6ea8fe">rho2d 0.7px</text>
+  <!-- pixel d -->
+  <circle cx="720" cy="205" r="3" fill="#ff7b72"/>
+  <line x1="695" y1="180" x2="720" y2="205" stroke="#ff7b72" stroke-width="1.5"/>
+  <text x="724" y="222" fill="#ff7b72">d (píxeles)</text>
+  <text x="540" y="325" fill="#9aa3b2">rho2d = 2·|d|²  (el azul, más grande, gana → se pinta el disco azul)</text>
+</svg>
+<p class="figcap">①→② El factor <code>r_px = f·s/z</code> es el zoom entre los dos dibujos. Como la huella real (naranja, 0.5 px) cabe dentro del disco fijo (azul, 0.7 px), el surfel se pinta como el <b>disco azul</b>: su tamaño y orientación reales del panel ① son irrelevantes en pantalla.</p>
 
 <p><b>Consecuencia 1 (forward): la forma del surfel es invisible.</b> Cuando gana <code>rho2d</code>, el kernel <code>G = (1−rho2d)^β</code> depende solo de <code>|d|</code> (píxeles al centro) y de <code>β</code>. <span class="hl">El tamaño <code>(s_u,s_v)</code> y la orientación en el plano del surfel NO aparecen en el píxel.</span> Solo cuentan: el <b>centro proyectado</b>, la <b>profundidad</b> y el <b>color/opacidad</b>.</p>
 
