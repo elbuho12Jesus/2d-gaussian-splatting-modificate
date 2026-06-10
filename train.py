@@ -276,8 +276,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                         gaussians._xyz.add_(noise)
 
-                # Reset de opacidades periódico (default deshabilitado: interval=1e9)
-                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                # Reset de opacidades periódico (default deshabilitado: interval=1e9).
+                # GATE: solo se permite hasta UN intervalo de reset ANTES de cerrar la
+                # densificación, para que tras el último reset la nube tenga al menos
+                # `opacity_reset_interval` iters de recuperación (relocate/add_new +
+                # gradiente) antes de la fase de consolidación. Ej.: densify_until=25000
+                # y reset=3000 → último reset permitido @22000.
+                # (ADVERTENCIA: opacity_reset abre la compuerta del ruido MCMC (1−o)^100
+                #  para toda la nube en cada reset; ver desastre run10 en CLAUDE.md.)
+                reset_cutoff = opt.densify_until_iter - opt.opacity_reset_interval
+                if iteration <= reset_cutoff and (
+                    iteration % opt.opacity_reset_interval == 0
+                    or (dataset.white_background and iteration == opt.densify_from_iter)
+                ):
                     print_memory("antes_reset")
                     gaussians.reset_opacity()
                     print_memory("después_reset")
