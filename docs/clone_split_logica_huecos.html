@@ -106,7 +106,20 @@ Un <b>hueco</b> (zona mal reconstruida) produce <b>error de render</b> en esos p
 <p>En el código esto es el <b>gradiente en view-space</b> que se acumula iteración a iteración (<code>add_densification_stats</code>, <code>train.py:197</code>) y se promedia. Cuando supera <code>densify_grad_threshold</code> (default <code>0.0002</code>), esa gaussiana queda <b>marcada</b>. Falta decidir <b>cómo</b> densificarla — y eso depende de su <b>tamaño</b>.</p>
 
 <h2>3. El criterio que separa clone de split: tamaño</h2>
-<p>Misma señal (gradiente alto), <b>dos enfermedades distintas</b>. El 3DGS las llama <i>under-reconstruction</i> y <i>over-reconstruction</i>, y las distingue por la escala de la gaussiana frente a <code>percent_dense · extent</code> (default <code>percent_dense = 0.01</code>):</p>
+
+<div class="note warn-box"><b>Aclaración importante — el código NUNCA mide "borrosidad".</b> «Borroso» / «over-reconstruction» es la <b>interpretación humana</b> del caso, no una magnitud que se calcule. El código solo mira <b>dos cosas</b> y las combina con un AND: <b>(1) ¿hay gradiente de error aquí?</b> (la misma señal para clone y split) y <b>(2) ¿el splat es grande o pequeño?</b> (comparación de tamaño puro). No hay análisis de frecuencias, varianza de píxeles ni detector de desenfoque. «Borroso» es la <i>explicación de por qué</i> conviene partir un splat-grande-con-error, no lo que se detecta.</div>
+
+<p>Misma señal (gradiente alto), <b>dos enfermedades distintas</b>. El 3DGS las llama <i>under-reconstruction</i> y <i>over-reconstruction</i>, y lo único que las desempata es el <b>tamaño físico</b> de la gaussiana frente a <code>percent_dense · extent</code> (default <code>percent_dense = 0.01</code>, es decir <b>el 1% de la extensión de la escena</b>):</p>
+
+<pre><code># densify_and_split (gaussian_model.py:444-446)
+mask = (grad &gt;= grad_threshold)                                  # (1) ¿hay error?
+mask &amp;= max(get_scaling) &gt;  percent_dense * scene_extent         # (2) GRANDE → split
+
+# densify_and_clone (gaussian_model.py:514-516)
+mask = (grad &gt;= grad_threshold)                                  # (1) MISMA señal
+mask &amp;= max(get_scaling) &lt;= percent_dense * scene_extent         # (2) PEQUEÑO → clone</code></pre>
+
+<p>Se toma el <b>eje de mayor escala</b> del splat (<code>max(get_scaling)</code>, en unidades de mundo) y se compara contra ese umbral absoluto. Ese es <b>todo</b> el criterio: gradiente de error + tamaño. El razonamiento «grande+error ⇒ está emborronando detalle» es una <b>inferencia encadenada</b> que motiva el split, pero la condición que ejecuta el código es literalmente <code>max(scale) &gt; 1% · extent</code>.</p>
 
 <figure>
 <svg viewBox="0 0 860 360" role="img" aria-label="Under-reconstruction usa clone; over-reconstruction usa split">
@@ -217,7 +230,7 @@ Un <b>hueco</b> (zona mal reconstruida) produce <b>error de render</b> en esos p
 <p>Así, justo tras el clone la imagen <b>no cambia</b> (dos capas a α/2 ≈ una a α), y solo cuando el gradiente las separa empiezan a cubrir píxeles distintos. La densificación es <b>neutra al render en el instante</b> y productiva <b>después</b>.</p>
 
 <h2>5. SPLIT paso a paso — afinar detalle borroso</h2>
-<p>Split ataca el otro hueco: el <b>de resolución</b>. Una gaussiana grande cubre un borde de alta frecuencia (una hoja, el filo del macizo de flores) <b>promediándolo</b> → se ve borroso. Dividirla da dos hijos que pueden adoptar orientaciones/colores distintos y reconstruir el borde.</p>
+<p>Split ataca el otro hueco: el <b>de resolución</b>. <b>Recuerda (§3): el split NO se dispara por "borroso", sino por <code>tamaño &gt; 1%·extent</code> + gradiente de error.</b> «Borroso» describe lo que <i>suele pasar</i> en ese caso: una gaussiana físicamente grande cubre un borde de alta frecuencia (una hoja, el filo del macizo de flores) <b>promediándolo</b> → se ve borroso. Dividirla da dos hijos más pequeños que pueden adoptar orientaciones/colores distintos y reconstruir el borde.</p>
 
 <figure>
 <svg viewBox="0 0 860 250" role="img" aria-label="Split de una gaussiana grande en dos hijos finos">
@@ -281,13 +294,13 @@ La intuición de cobertura es la misma; cambia <b>cómo</b> se exploran las sub-
 <figcaption>Cada ronda reduce un poco el error: clone/split añaden capacidad, la optimización la coloca, y la ronda siguiente vuelve a marcar lo que aún falta. Cuando el error baja del umbral, esa zona deja de densificarse. El <code>prune</code> retira por el camino lo que quedó transparente o gigante.</figcaption>
 </figure>
 
-<div class="note ok-box"><b>Por qué esto cubre el fondo y el MCMC lo tiene más difícil.</b> En clásico, <b>el propio error del hueco</b> dirige <i>dónde</i> nacen y <i>hacia dónde</i> migran las primitivas (gradiente local). Es un servo cerrado sobre el residuo. El MCMC, en cambio, a cap saturado <b>no crea</b>: solo <code>relocate</code> teletransporta muertos según opacidad, sin que el gradiente del hueco elija el destino fino. Esa es la raíz de por qué el 2DGS original limpia el fondo y tu pipeline MCMC lo garabatea — y por qué <code>opacity_reg</code> (subir mortalidad → más relocate) es el sustituto imperfecto de este lazo.</p></div>
+<div class="note ok-box"><b>Por qué esto cubre el fondo y el MCMC lo tiene más difícil.</b> En clásico, <b>el propio error del hueco</b> dirige <i>dónde</i> nacen y <i>hacia dónde</i> migran las primitivas (gradiente local). Es un servo cerrado sobre el residuo. El MCMC, en cambio, a cap saturado <b>no crea</b>: solo <code>relocate</code> teletransporta muertos según opacidad, sin que el gradiente del hueco elija el destino fino. Esa es la raíz de por qué el 2DGS original limpia el fondo y tu pipeline MCMC lo garabatea — y por qué <code>opacity_reg</code> (subir mortalidad → más relocate) es el sustituto imperfecto de este lazo. <b>El MCMC al detalle y la comparación de objetivos:</b> <code><a href="mcmc_beta_vs_clonesplit.html" style="color:var(--accent)">mcmc_beta_vs_clonesplit.html</a></code>.</p></div>
 
 <h2>7. Resumen de una pantalla</h2>
 <div class="card">
 <ul>
 <li><b>Señal única:</b> un hueco genera residuo → <code>‖∂L/∂μ‖</code> grande acumulado → marca densificar (umbral <code>0.0002</code>).</li>
-<li><b>Bifurcación por tamaño:</b> pequeña → <b>clone</b> (falta cobertura); grande → <b>split</b> (falta resolución). Frontera <code>percent_dense·extent</code>.</li>
+<li><b>Bifurcación por tamaño (lo único que se mide, NO "borrosidad"):</b> pequeña (<code>max(scale) ≤ 1%·extent</code>) → <b>clone</b> (falta cobertura); grande (<code>&gt; 1%·extent</code>) → <b>split</b> (falta resolución). «Borroso» es la interpretación del caso grande+error, no una magnitud calculada.</li>
 <li><b>Clone:</b> copia <b>encima</b> (sin ruido) a <code>α/2</code>; el gradiente la arrastra al hueco después. Render neutro al instante.</li>
 <li><b>Split:</b> 2 hijos a <code>escala/1.6</code>, <code>α/2</code>, dentro del volumen; padre eliminado. Posición de hijos: <b>ruido gaussiano</b> (original) vs <b>±0.5·escala determinista</b> (tu repo).</li>
 <li><b>No es un disparo:</b> es densificar → optimizar → densificar; la cobertura emerge del lazo, no de una iteración.</li>
@@ -295,7 +308,7 @@ La intuición de cobertura es la misma; cambia <b>cómo</b> se exploran las sub-
 </ul>
 </div>
 
-<p class="meta">Verificado contra <code>scene/gaussian_model.py</code> (<code>densify_and_split:439</code>, <code>densify_and_clone:513</code>) y <code>train.py</code> de este repo · 2026-06-12. Doc hermano: <code>densificacion_clasica_antes_de_mcmc.html</code> · lado MCMC: <code>mcmc_densificacion.html</code>, <code>add_new_gs_jitter.html</code>.</p>
+<p class="meta">Verificado contra <code>scene/gaussian_model.py</code> (<code>densify_and_split:439</code>, <code>densify_and_clone:513</code>) y <code>train.py</code> de este repo · 2026-06-12. Doc hermano: <code>densificacion_clasica_antes_de_mcmc.html</code> · lado MCMC: <code><a href="mcmc_beta_vs_clonesplit.html" style="color:var(--accent)">mcmc_beta_vs_clonesplit.html</a></code> (lógica + comparación de objetivos), <code>mcmc_densificacion.html</code>, <code>add_new_gs_jitter.html</code>.</p>
 
 </div>
 </body>
