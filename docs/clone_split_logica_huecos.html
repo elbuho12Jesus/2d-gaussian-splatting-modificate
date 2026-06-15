@@ -105,6 +105,26 @@ Un <b>hueco</b> (zona mal reconstruida) produce <b>error de render</b> en esos p
 
 <p>En el código esto es el <b>gradiente en view-space</b> que se acumula iteración a iteración (<code>add_densification_stats</code>, <code>train.py:197</code>) y se promedia. Cuando supera <code>densify_grad_threshold</code> (default <code>0.0002</code>), esa gaussiana queda <b>marcada</b>. Falta decidir <b>cómo</b> densificarla — y eso depende de su <b>tamaño</b>.</p>
 
+<h3>¿Qué gradiente exactamente? — ∂L/∂(posición 2D en pantalla)</h3>
+<p>Es una pregunta clave y fácil de confundir. <b>NO</b> es el gradiente respecto a la opacidad, ni a la escala, ni a la posición 3D del centro. Es el gradiente de la pérdida respecto a la <b>posición 2D proyectada del centro del splat en la pantalla</b> (<code>means2D</code>, también llamado <i>screen-space</i> o <i>view-space points</i>). En el código:</p>
+<pre><code># gaussian_renderer/__init__.py:27 — tensor "trampa" que captura el gradiente
+screenspace_points = zeros_like(get_xyz, requires_grad=True)   # shape [N,3] (x,y NDC + z)
+means2D = screenspace_points                                   # se pasa al rasterizer
+
+# scene/gaussian_model.py — add_densification_stats
+xyz_gradient_accum[visible] += ‖ means2D.grad[visible] ‖₂      # NORMA del grad 2D
+denom[visible]              += 1                                # cuántas veces se vio
+# ...más tarde:
+grads = xyz_gradient_accum / denom                             # promedio por splat</code></pre>
+<p>Desglose de por qué es <b>ese</b> y no otro:</p>
+<ul>
+<li><b>Respecto a la posición 2D, no la 3D:</b> el residuo del píxel vive en la imagen. Su derivada natural es «hacia dónde mover el centro <i>en pantalla</i> para reducir el error». Es la señal más directa de «esta primitiva está mal ubicada respecto a lo que el píxel pide».</li>
+<li><b>La NORMA (‖·‖₂), no el vector:</b> a una primitiva en el borde de un hueco, distintos píxeles la empujan en <b>direcciones contradictorias</b> (el abanico de flechas de la figura anterior). El vector medio podría cancelarse a casi cero; por eso se acumula el <b>módulo</b>, que sí crece cuando hay tensión multidireccional = «aquí falta capacidad».</li>
+<li><b>Promediado por visibilidad (<code>/denom</code>):</b> solo se cuenta en las iteraciones en que el splat fue visible (<code>visibility_filter</code>). Así un splat que aparece en pocas vistas no queda penalizado ni inflado por el número de veces que se renderizó.</li>
+<li><b>Truco de implementación:</b> <code>means2D</code> es un tensor de ceros con <code>requires_grad=True</code> que se suma a la proyección dentro del rasterizer solo para que PyTorch <b>retenga</b> ahí el gradiente de la posición proyectada (<code>retain_grad()</code>). No afecta al render; es un "captador" del gradiente que de otro modo no sería accesible desde Python.</li>
+</ul>
+<p>Resumen: la señal de densificación es <code>promedio(‖∂L/∂μ₂D‖)</code> por splat — <b>cuánto "tira" el error de la imagen del centro proyectado de cada primitiva</b>. Ni opacidad, ni escala, ni xyz 3D.</p>
+
 <h2>3. El criterio que separa clone de split: tamaño</h2>
 
 <div class="note warn-box"><b>Aclaración importante — el código NUNCA mide "borrosidad".</b> «Borroso» / «over-reconstruction» es la <b>interpretación humana</b> del caso, no una magnitud que se calcule. El código solo mira <b>dos cosas</b> y las combina con un AND: <b>(1) ¿hay gradiente de error aquí?</b> (la misma señal para clone y split) y <b>(2) ¿el splat es grande o pequeño?</b> (comparación de tamaño puro). No hay análisis de frecuencias, varianza de píxeles ni detector de desenfoque. «Borroso» es la <i>explicación de por qué</i> conviene partir un splat-grande-con-error, no lo que se detecta.</div>

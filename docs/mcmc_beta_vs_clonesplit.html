@@ -78,6 +78,15 @@ src_idx = multinomial(probs, n_dead, replacement=True)
 # copia TODOS los params del src al slot muerto: xyz, scale, rot, color, beta…</code></pre>
 <p><b>Conserva la transmitancia.</b> Si un src se elige <code>ratio</code> veces, habrá <code>ratio+1</code> instancias; cada una recibe <code>new_alpha = 1−(1−α)^(1/(ratio+1))</code> (<code>_update_params</code>, <code>beta_model.py:700</code>) — así duplicar no oscurece la zona. <b>El número total de splats no cambia</b>: relocate solo mueve masa de donde sobra (muertos) a donde hay densidad/opacidad.</p>
 
+<div class="note"><b>¿Qué hace <code>torch.multinomial</code> exactamente?</b> Es un <b>sorteo con pesos</b> (una ruleta cargada). Recibe un vector de pesos no negativos y devuelve <b>índices</b> elegidos al azar con probabilidad proporcional a su peso.
+<pre><code>torch.multinomial(weights, num_samples, replacement=True)
+# weights: tensor [N] de pesos ≥ 0 (NO hace falta que sumen 1; los normaliza internamente: p_i = w_i / Σw)
+# num_samples: cuántos índices devolver
+# replacement=True: con reemplazo → un mismo índice puede salir varias veces
+# → devuelve tensor [num_samples] de índices en [0, N)</code></pre>
+<b>Concretamente en relocate:</b> <code>weights = opacidad de los splats vivos</code>, <code>num_samples = nº de muertos a rellenar</code>. Cada slot muerto recibe el índice de un splat vivo, sorteado con <b>probabilidad ∝ su opacidad</b>: los splats muy opacos (los que "más aportan") son los más propensos a ser copiados. Como es <b>con reemplazo</b>, un splat vivo muy opaco puede ser elegido como fuente para <b>varios</b> muertos a la vez — y ahí entra el <code>ratio</code> (cuántas veces salió cada índice, vía <code>torch.bincount</code>) que reparte la opacidad entre todas sus copias.
+<br><br><b>Ejemplo mínimo:</b> con <code>weights=[0.9, 0.1, 0.0]</code> y <code>num_samples=4</code>, multinomial devuelve algo como <code>[0,0,1,0]</code>: el índice 0 (peso 0.9) sale casi siempre, el 1 (peso 0.1) a veces, el 2 (peso 0) <b>nunca</b>. Por eso un splat con opacidad 0 jamás es fuente. Es <b>azar ponderado por opacidad</b>, no determinista: distintas ejecuciones dan distintos índices.</div>
+
 <h3>2.3 <code>add_new_gs</code> — crecer con tope</h3>
 <p>Esto es lo único que <b>aumenta</b> el número de splats, y de forma deliberadamente lenta (<code>beta_model.py:762</code>):</p>
 <pre><code>target = min(cap_max, int(1.05 * N))   # +5% por ronda, jamás supera cap_max
