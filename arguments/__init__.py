@@ -146,6 +146,15 @@ class OptimizationParams(ParamGroup):
         # toda cámara; la cola <0.2·extent (~49k, op_med 0.25) son floaters que
         # emborronan el césped en vistas nuevas. 0.0 = desactivado (default).
         self.floater_cull_dist = 0.0
+        # --- Densificación clásica 2DGS (clone/split) en vez de MCMC ---
+        # False (default) = densificación MCMC (relocate_gs + add_new_gs + ruido).
+        # True = densificación clásica del 2DGS/3DGS original: densify_and_prune
+        # (clone para under-reconstrucción + split para over-reconstrucción, dirigido
+        # por gradiente de viewspace) + opacity_reset periódico. Con classic_densify=True
+        # el ruido posicional MCMC y el cull de floaters NO se aplican (son del MCMC).
+        # Prueba para aislar si el garabato del fondo es del MCMC. Ver
+        # docs/clone_split_logica_huecos.html y docs/mcmc_beta_vs_clonesplit.html.
+        self.classic_densify = False
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

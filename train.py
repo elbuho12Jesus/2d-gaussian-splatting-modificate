@@ -195,12 +195,39 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # densification_postfix la resetea al añadir splats.
             if iteration < opt.densify_until_iter:
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                # El prune clásico por tamaño en pantalla (size_threshold tras el primer
+                # opacity_reset) necesita el radio 2D máximo por splat. El MCMC no lo usa.
+                if opt.classic_densify:
+                    gaussians.max_radii2D[visibility_filter] = torch.max(
+                        gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+
+            # ============================================================
+            # DENSIFICACIÓN CLÁSICA 2DGS (clone/split + prune + opacity_reset).
+            # Activada por --classic_densify. Sin ruido MCMC ni cull de floaters
+            # (son del camino MCMC). Réplica de la orquestación del 2DGS original.
+            # ============================================================
+            if iteration < opt.densify_until_iter and opt.classic_densify:
+                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                    # Sanea NaN/Inf antes de densificar (mismo guard que el MCMC).
+                    gaussians.sanitize_parameters(iteration=iteration)
+                    # size_threshold: prune por radio en pantalla, solo DESPUÉS del
+                    # primer opacity_reset (idéntico al original 2DGS train.py).
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    gaussians.densify_and_prune(
+                        opt.densify_grad_threshold, opt.opacity_cull,
+                        gaussians.spatial_lr_scale, size_threshold)
+                # opacity_reset clásico: condición simple del original (sin el gate
+                # reset_cutoff del MCMC). Es SEGURO aquí porque el ruido (1−o)^100
+                # está OFF en este camino → no abre ninguna compuerta de terremoto.
+                if iteration % opt.opacity_reset_interval == 0 or (
+                        dataset.white_background and iteration == opt.densify_from_iter):
+                    gaussians.reset_opacity()
 
             # Densification (MCMC, alineado con Beta Splatting oficial).
             # Solo relocate + add_new (sin densify_and_prune 2DGS). Ruido posicional
             # se aplica únicamente en los pasos de densify para evitar la divergencia
             # numérica que se observó en Run 2 (NaN tras iter 30000).
-            if iteration < opt.densify_until_iter:
+            elif iteration < opt.densify_until_iter:
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     # Defensa: sanear NaN/Inf que puedan haber entrado por gradientes
                     # explosivos o por desplazamientos extremos del ruido posicional.

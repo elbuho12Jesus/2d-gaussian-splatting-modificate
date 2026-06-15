@@ -3,7 +3,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Deben coincidir con train_server.sh.
 DATASET=flowers          # carpeta en Datasets/
-RUN=13                    # número de run
+RUN=14                    # número de run
 ITER=30000               # iteración (checkpoint) a renderizar (el test pica ~30k)
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
