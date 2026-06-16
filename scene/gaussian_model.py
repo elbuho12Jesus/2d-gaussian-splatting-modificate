@@ -334,8 +334,16 @@ class GaussianModel:
         self._opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
         self._scaling = nn.Parameter(torch.tensor(scales, dtype=torch.float, device="cuda").requires_grad_(True))
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
-        # ✅ beta: inicializado de forma consistente con el resto
-        beta = np.ones((xyz.shape[0], 1), dtype=np.float32)
+        # ✅ beta: LEER el valor entrenado del ply (no reinicializar). El bug previo
+        # ponía beta=1.0 a todos al cargar → descartaba el beta entrenado (raw mean
+        # ~-3.45) → render.py/metrics.py daban PSNR ~11 ("colapso a negro") aunque el
+        # modelo era bueno (~20 en el eval interno del entrenamiento). Fallback a 1.0
+        # solo si el ply es antiguo y no tiene el campo 'beta' (mismo patrón que sb_params).
+        prop_names = [p.name for p in plydata.elements[0].properties]
+        if "beta" in prop_names:
+            beta = np.asarray(plydata.elements[0]["beta"])[..., np.newaxis]
+        else:
+            beta = np.ones((xyz.shape[0], 1), dtype=np.float32)
         self._beta = nn.Parameter(torch.tensor(beta, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self.active_sh_degree = self.max_sh_degree
