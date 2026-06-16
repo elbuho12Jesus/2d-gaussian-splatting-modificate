@@ -265,7 +265,12 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    def reset_opacity(self):
+    def reset_opacity(self, iteration=None):
+        if os.environ.get("DEBUG_DENSIFY", "1") != "0":
+            cur = self.get_opacity.squeeze(-1)
+            n_above = int((cur > 0.01).sum())
+            print(f"[RESET iter={iteration}] reset_opacity -> 0.01 | bajados (opac>0.01)={n_above}/{cur.shape[0]} "
+                  f"| opac<0.005 antes={int((cur < 0.005).sum())}", flush=True)
         opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
@@ -534,12 +539,34 @@ class GaussianModel:
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_beta, new_scaling, new_rotation, new_sb_params)
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, iteration=None):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
+        _dbg = os.environ.get("DEBUG_DENSIFY", "1") != "0"
+        if _dbg:
+            # Gradiente de posición (viewspace) acumulado por splat = "error" que dirige
+            # clone/split. Solo cuentan los splats vistos al menos una vez (denom>0).
+            gnorm = grads.squeeze(-1)
+            seen = self.denom.squeeze(-1) > 0
+            gv = gnorm[seen]
+            n_total = self.get_xyz.shape[0]
+            n_cand = int((gv >= max_grad).sum()) if gv.numel() else 0
+            if gv.numel():
+                qs = torch.quantile(gv, torch.tensor([0.5, 0.9, 0.99], device=gv.device))
+                gstats = (f"mean={gv.mean().item():.2e} med={qs[0].item():.2e} "
+                          f"p90={qs[1].item():.2e} p99={qs[2].item():.2e} max={gv.max().item():.2e}")
+            else:
+                gstats = "sin grads"
+            print(f"[DENSIFY iter={iteration}] N={n_total} vistos={int(seen.sum())} "
+                  f"grad_pos(thr={max_grad:.1e}): {gstats} | >=thr={n_cand} "
+                  f"({100.0*n_cand/max(n_total,1):.2f}%)", flush=True)
+
+        n0 = self.get_xyz.shape[0]
         self.densify_and_clone(grads, max_grad, extent)
+        n1 = self.get_xyz.shape[0]
         self.densify_and_split(grads, max_grad, extent)
+        n2 = self.get_xyz.shape[0]
         '''
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
@@ -578,10 +605,22 @@ class GaussianModel:
 
 
         # ---- mantener condición pantalla ----
+        big_points_vs = None
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size
             prune_mask = prune_mask | big_points_vs
 
+        if _dbg:
+            n_before = self.get_xyz.shape[0]
+            n_screen = int(big_points_vs.sum()) if big_points_vs is not None else 0
+            # low_alpha = opacidad por DEBAJO de opacity_cull AHORA MISMO (todavía no
+            # sostenida). prune_alpha_mask = solo los que llevan >N_sustain densifies bajos.
+            print(f"[DENSIFY iter={iteration}] +clone={n1-n0} +split={n2-n1} "
+                  f"(sel={(n2-n1)}) | PRUNE total={int(prune_mask.sum())} "
+                  f"[alpha_sostenido(>{N_sustain})={int(prune_alpha_mask.sum())}, "
+                  f"area={int(prune_area_mask.sum())}, screen={n_screen}] | "
+                  f"opac<{min_opacity:g}_ahora={int(low_alpha.sum())} | "
+                  f"N:{n_before}->{n_before-int(prune_mask.sum())}", flush=True)
 
         # ---- aplicar pruning ----
         self.prune_points(prune_mask)

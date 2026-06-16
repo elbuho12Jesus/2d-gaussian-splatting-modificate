@@ -215,13 +215,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(
                         opt.densify_grad_threshold, opt.opacity_cull,
-                        gaussians.spatial_lr_scale, size_threshold)
+                        gaussians.spatial_lr_scale, size_threshold, iteration=iteration)
                 # opacity_reset clásico: condición simple del original (sin el gate
                 # reset_cutoff del MCMC). Es SEGURO aquí porque el ruido (1−o)^100
                 # está OFF en este camino → no abre ninguna compuerta de terremoto.
                 if iteration % opt.opacity_reset_interval == 0 or (
                         dataset.white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
+                    gaussians.reset_opacity(iteration=iteration)
 
             # Densification (MCMC, alineado con Beta Splatting oficial).
             # Solo relocate + add_new (sin densify_and_prune 2DGS). Ruido posicional
@@ -317,7 +317,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     or (dataset.white_background and iteration == opt.densify_from_iter)
                 ):
                     print_memory("antes_reset")
-                    gaussians.reset_opacity()
+                    gaussians.reset_opacity(iteration=iteration)
                     print_memory("después_reset")
             else:
                 # Post-densify: sanear NaN/Inf cada densification_interval pasos para que
