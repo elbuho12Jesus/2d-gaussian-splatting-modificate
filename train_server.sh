@@ -5,16 +5,19 @@ export DEBUG_MEM=1000    # pico de memoria + dev_free cada 1000 iters (delata zo
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers          # nombre de la carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=14                    # número de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=15                    # número de run → output/m360/${DATASET}_beta_run${RUN}
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
 # ───────────────────────────────────────────────────────────────────────────
 
-# run14: PRUEBA — densificación CLÁSICA 2DGS (clone/split + prune + opacity_reset)
-# en lugar de MCMC. Objetivo: aislar si el garabato del fondo es culpa del MCMC.
-# Flag nuevo --classic_densify activa densify_and_prune (clone para under-recon +
-# split para over-recon, dirigido por gradiente de viewspace) + opacity_reset=3000.
+# run15: FIX DE PODA — densificación CLÁSICA 2DGS con el PRUNE INMEDIATO restaurado
+# (gaussian_model.py: opacity<cull + big_points_vs/ws cada densify). El run14 reveló
+# (log DEBUG_DENSIFY) que el prune "DBS sostenido" era código muerto (PRUNE=0 en los
+# 144 pasos → 4.37M splats invisibles sin eliminar, fondo negro, PSNR 11.30). Ahora la
+# nube se limpia cada densify como en el 2DGS original. Misma config que run14 por lo
+# demás. NO requiere recompilar (solo Python). Flag --classic_densify activa
+# densify_and_prune (clone under-recon + split over-recon por gradiente) + opacity_reset.
 # El ruido posicional MCMC y el cull de floaters NO se aplican (son del MCMC).
 # Config alineada con el 2DGS ORIGINAL (el que da test 20.92 en flowers):
 #   - opacity_reset_interval=3000  → ciclo nativo reset→recupera/prune (SEGURO sin
@@ -25,9 +28,9 @@ LOG=logs/${DATASET}${RUN}.log
 #   - opacity_cull=0.005 → min_opacity del prune original.
 # NO se pasan cap_max / noise_lr / mcmc_* / cov_noise / floater_cull_dist: son del
 # camino MCMC y el clásico los ignora.
-# Tras el run: render_server.sh (RUN=14, ITER=30000) + metrics.py. Comparar
-# LPIPS/SSIM/PSNR vs run9 (MCMC sano ~21.5) y vs original (20.92). Vigilar el
-# número de splats (clásico crece libre, sin cap) por si OOM en 95 GB.
+# Tras el run: render_server.sh (RUN=15, ITER=30000) + metrics.py. Comparar
+# LPIPS/SSIM/PSNR vs run14 (prune roto, 11.30), run9 (MCMC sano ~21.5) y original
+# (20.92). En el log verificar que ahora PRUNE>0 y que N deja de crecer sin freno.
 python train.py -s Datasets/${DATASET} \
     -m $MODEL \
     --eval \

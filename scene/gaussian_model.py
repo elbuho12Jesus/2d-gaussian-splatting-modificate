@@ -567,59 +567,32 @@ class GaussianModel:
         n1 = self.get_xyz.shape[0]
         self.densify_and_split(grads, max_grad, extent)
         n2 = self.get_xyz.shape[0]
-        '''
-        prune_mask = (self.get_opacity < min_opacity).squeeze()
+
+        # ============================================================
+        # ✅ PRUNE INMEDIATO 2DGS/3DGS ORIGINAL (run15, 2026-06-16).
+        # El prune "DBS sostenido" (low_opacity_counter>50) era CÓDIGO MUERTO:
+        # opacity_reset cada 3000 (=30 densifies < 50) borraba el contador →
+        # PRUNE=0 en los 144 pasos del run14 → 4.37M splats (31%) invisibles sin
+        # eliminar. Restauramos la poda inmediata del original: opacidad < cull,
+        # + grande en pantalla (max_radii2D), + grande en mundo (escala > 0.1·extent).
+        # ============================================================
+        prune_alpha_mask = (self.get_opacity < min_opacity).squeeze()
+        prune_mask = prune_alpha_mask
+        big_points_vs = None
+        big_points_ws = None
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
-        self.prune_points(prune_mask)
-        '''
-        # ===============================
-        # ✅ DBS-style pruning (stable)
-        # ===============================
-
-        alpha = self.get_opacity.squeeze()
-
-        # ---- (A) Opacidad baja sostenida ----
-        low_alpha = alpha < min_opacity
-
-        # actualizar contador
-        self.low_opacity_counter[low_alpha] += 1
-        self.low_opacity_counter[~low_alpha] = 0
-
-        N_sustain = 50  # puedes ajustar (30–100)
-        prune_alpha_mask = self.low_opacity_counter > N_sustain
-
-
-        # ---- (B) Área tangencial excesiva ----
-        scales = self.get_scaling
-        area = scales[:, 0] * scales[:, 1]
-
-        max_area = (0.1 * extent) ** 2
-        prune_area_mask = area > max_area
-
-
-        # ---- combinar criterios ----
-        prune_mask = prune_alpha_mask | prune_area_mask
-
-
-        # ---- mantener condición pantalla ----
-        big_points_vs = None
-        if max_screen_size:
-            big_points_vs = self.max_radii2D > max_screen_size
-            prune_mask = prune_mask | big_points_vs
 
         if _dbg:
             n_before = self.get_xyz.shape[0]
+            n_alpha = int(prune_alpha_mask.sum())
             n_screen = int(big_points_vs.sum()) if big_points_vs is not None else 0
-            # low_alpha = opacidad por DEBAJO de opacity_cull AHORA MISMO (todavía no
-            # sostenida). prune_alpha_mask = solo los que llevan >N_sustain densifies bajos.
+            n_world = int(big_points_ws.sum()) if big_points_ws is not None else 0
             print(f"[DENSIFY iter={iteration}] +clone={n1-n0} +split={n2-n1} "
                   f"(sel={(n2-n1)}) | PRUNE total={int(prune_mask.sum())} "
-                  f"[alpha_sostenido(>{N_sustain})={int(prune_alpha_mask.sum())}, "
-                  f"area={int(prune_area_mask.sum())}, screen={n_screen}] | "
-                  f"opac<{min_opacity:g}_ahora={int(low_alpha.sum())} | "
+                  f"[opac<{min_opacity:g}={n_alpha}, screen={n_screen}, world={n_world}] | "
                   f"N:{n_before}->{n_before-int(prune_mask.sum())}", flush=True)
 
         # ---- aplicar pruning ----
