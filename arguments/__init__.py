@@ -146,6 +146,16 @@ class OptimizationParams(ParamGroup):
         # toda cámara; la cola <0.2·extent (~49k, op_med 0.25) son floaters que
         # emborronan el césped en vistas nuevas. 0.0 = desactivado (default).
         self.floater_cull_dist = 0.0
+        # --- Gate de muerte sostenida para el relocate MCMC ---
+        # 0 (default) = comportamiento original: dead_mask = (opacidad <= opacity_cull)
+        # INSTANTÁNEO → relocate recicla cualquier splat que baje del cull aunque sea un
+        # instante. >0 = exige que el splat lleve `mcmc_dead_sustain` checks de densify
+        # (cada densification_interval iters) CONSECUTIVOS bajo el cull antes de reubicarlo
+        # (low_opacity_counter > N). Da a los splats del fondo, que fluctúan, tiempo de
+        # recuperar opacidad antes de ser reciclados. Viable en MCMC porque NO hay
+        # opacity_reset (interval=1e9) que borre el contador; requiere el fix de
+        # densification_postfix que preserva el contador. Ver docs/low_opacity_counter_y_reset.html.
+        self.mcmc_dead_sustain = 0
         # --- Densificación clásica 2DGS (clone/split) en vez de MCMC ---
         # False (default) = densificación MCMC (relocate_gs + add_new_gs + ruido).
         # True = densificación clásica del 2DGS/3DGS original: densify_and_prune

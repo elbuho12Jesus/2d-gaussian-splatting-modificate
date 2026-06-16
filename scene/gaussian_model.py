@@ -447,7 +447,20 @@ class GaussianModel:
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
-        self.low_opacity_counter = torch.zeros((self.get_xyz.shape[0],), device="cuda")
+        # low_opacity_counter: PRESERVAR el conteo de los splats existentes (los nuevos
+        # arrancan en 0). Reiniciarlo a ceros aquí rompía el conteo sostenido en el
+        # camino MCMC, porque add_new_gs llama a este postfix CADA paso → el contador
+        # nunca pasaba de 1 (mismo síndrome de código muerto que el opacity_reset en el
+        # clásico). El concat mantiene el historial; relocate_gs/prune_points ya lo
+        # mantienen alineado. Los otros acumuladores SÍ se reinician (es correcto: la
+        # acumulación de gradiente arranca de cero tras cambiar el set de splats).
+        n_new = new_xyz.shape[0]
+        n_total = self.get_xyz.shape[0]
+        if self.low_opacity_counter.shape[0] == n_total - n_new:
+            self.low_opacity_counter = torch.cat(
+                [self.low_opacity_counter, torch.zeros(n_new, device="cuda")])
+        else:
+            self.low_opacity_counter = torch.zeros((n_total,), device="cuda")
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
         n_init_points = self.get_xyz.shape[0]

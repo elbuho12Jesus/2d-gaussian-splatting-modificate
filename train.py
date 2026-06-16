@@ -232,7 +232,24 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     # Defensa: sanear NaN/Inf que puedan haber entrado por gradientes
                     # explosivos o por desplazamientos extremos del ruido posicional.
                     gaussians.sanitize_parameters(iteration=iteration)
-                    dead_mask = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
+                    # dead_mask = splats a reciclar (relocate). Dos modos:
+                    #  - instantáneo (mcmc_dead_sustain=0, default): opacidad <= cull AHORA.
+                    #  - sostenido (>0): exige N checks consecutivos bajo el cull
+                    #    (low_opacity_counter > N). Evita reubicar splats del fondo que solo
+                    #    fluctúan un instante. Viable porque el camino MCMC no tiene
+                    #    opacity_reset que borre el contador (ver low_opacity_counter_y_reset.html).
+                    low_now = (gaussians.get_opacity <= opt.opacity_cull).squeeze(-1)
+                    n_sustain = int(getattr(opt, "mcmc_dead_sustain", 0))
+                    if n_sustain > 0:
+                        gaussians.low_opacity_counter[low_now] += 1
+                        gaussians.low_opacity_counter[~low_now] = 0
+                        dead_mask = gaussians.low_opacity_counter > n_sustain
+                        if DEBUG_NOISE and (iteration // opt.densification_interval) % DEBUG_NOISE == 0:
+                            print(f"[DEADGATE it{iteration}] opac<=cull_ahora={int(low_now.sum())} "
+                                  f"sostenido(>{n_sustain})={int(dead_mask.sum())} "
+                                  f"counter_max={int(gaussians.low_opacity_counter.max())}")
+                    else:
+                        dead_mask = low_now
 
                     # Cull anti-floater: splats más cerca de un centro de cámara de
                     # train que floater_cull_dist·extent se marcan muertos → relocate
