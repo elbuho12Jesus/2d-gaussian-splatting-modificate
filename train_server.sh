@@ -5,36 +5,37 @@ export DEBUG_MEM=1000    # pico de memoria + dev_free cada 1000 iters (delata zo
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers          # nombre de la carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=19                    # número de run → output/m360/${DATASET}_beta_run${RUN}
-DEAD_SUSTAIN=25          # N del gate de muerte sostenida MCMC (relocate solo tras N checks bajo cull)
-CAP_MAX=5000000          # 5M (run16=7.5M saturó velo; run17=3M lo perdió capacidad → 5M intermedio)
+RUN=20                    # número de run → output/m360/${DATASET}_beta_run${RUN}
+DEAD_SUSTAIN=5           # gate MCMC de vuelta a 5 (run19 con 25 ALIMENTÓ la niebla)
+CAP_MAX=7500000          # 7.5M = base run16 (el mejor MCMC honesto; menor niebla de los MCMC)
+OPACITY_REG=0.02         # ÚNICA variable nueva: 0.01→0.02 (presión L1 para limpiar la niebla)
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
 # ───────────────────────────────────────────────────────────────────────────
 
-# run19: MCMC con GATE MÁS ALTO (dead_sustain 5→25) + cap 5M. Hipótesis del usuario:
-# el MCMC "presta poca atención al fondo" porque recicla sus splats demasiado pronto.
-# En el clásico (run18) subir el prune sostenido a N=25 SÍ rellenó el fondo (más árboles).
-# Trasladamos la idea al MCMC: con --mcmc_dead_sustain 25 el relocate exige 25 checks de
-# densify CONSECUTIVOS bajo cull (25·100=2500 iters) antes de reubicar un splat → da al
-# fondo (que fluctúa) mucho más tiempo para recuperar opacidad antes de reciclarlo.
-# (run16 usó 5 = 500 iters.) VIABLE en MCMC porque opacity_reset está OFF (1e9) → nada
-# borra el counter (a diferencia del clásico, donde el reset cada 3000 lo limita a <30).
+# run20: atacar la NIEBLA por la OPACIDAD (no por el gate). Base = run16 EXACTA (el mejor
+# MCMC honesto: PSNR 20.21 / SSIM 0.597 / LPIPS 0.339), cambiando UNA sola variable:
+# opacity_reg 0.01 → 0.02. SIN tocar la lógica del relocate (decisión del usuario).
 #
-# cap 5M: run16 (7.5M) saturó el cap y alimentó el velo translúcido; run17 (3M) perdió
-# capacidad y EMPEORÓ (19.87 vs 20.21) sin quitar el velo. 5M = punto intermedio.
+# LÓGICA: la niebla SON floaters translúcidos de baja opacidad en el fondo (run19 demostró
+# que darles más tiempo —gate 25— los multiplica). opacity_reg es una presión L1 que empuja
+# TODAS las opacidades hacia 0 → los floaters caen bajo el cull → el relocate (intacto) se
+# los lleva a zonas de alto error. Vía MCMC-nativa de limpiar el fondo. Ver
+# docs/regularizacion_opacidad_l1.html. (gate de vuelta a 5: run19 confirmó que 25 = más velo.)
 #
-# Resto = config run16 (mejor MCMC honesto: PSNR 20.21 / SSIM 0.597 / LPIPS 0.339):
-#   ruido run9 (--cov_noise --cov_noise_normal 1.0 --noise_lr 3e3), reset OFF,
-#   lambda_dist=10, lambda_normal=0.05, scale_reg=0.01, opacity_reg=0.01, opacity_cull=0.01,
-#   floater_cull_dist=0.2, mcmc_error_weight=3.5, mcmc_jitter_scale=1.5,
-#   iterations=30000, densify_until_iter=25000.
+# AVISOS: (1) opacity_reg empuja TODA la opacidad → con exceso puede VACIAR el fondo
+# (translúcido/oscuro). Por eso 0.02 moderado, no 0.05. Si limpia sin vaciar → probar 0.03.
+# (2) El 0.05 de run13 quedó contaminado por el bug de beta (sin lectura limpia); 0.02 aquí
+# es la primera medición honesta de la palanca opacity_reg.
 #
-# En el log vigilar [DEADGATE] (con N=25 el "sostenido(>25)" debe ser MUCHO menor que con
-# N=5 → menos relocate → más splats de fondo sobreviven) y nº de splats (¿llega a 5M?).
-# NO recompila CUDA. Tras el run: render_server.sh (RUN=19, ITER=30000) + metrics.py.
-# Comparar LPIPS/SSIM/PSNR vs run16 (0.339/0.597/20.21) y run18 clásico (0.387/0.549/20.12).
+# Resto = run16: ruido run9 (--cov_noise --cov_noise_normal 1.0 --noise_lr 3e3), reset OFF,
+# lambda_dist=10, lambda_normal=0.05, scale_reg=0.01, opacity_cull=0.01, floater_cull_dist=0.2,
+# mcmc_error_weight=3.5, mcmc_jitter_scale=1.5, iterations=30000, densify_until_iter=25000.
+#
+# En el log vigilar: ¿baja el exceso-brillo/niebla en metrics per-vista? ¿se vacía el fondo
+# (render mean << gt)? nº de splats. NO recompila CUDA. Tras el run: render_server.sh
+# (RUN=20) + metrics.py. Comparar vs run16 (0.339/0.597/20.21, niebla 8.47).
 python train.py -s Datasets/${DATASET} \
     -m $MODEL \
     --eval \
@@ -48,7 +49,7 @@ python train.py -s Datasets/${DATASET} \
     --cap_max $CAP_MAX \
     --noise_lr 3e3 \
     --scale_reg 0.01 \
-    --opacity_reg 0.01 \
+    --opacity_reg $OPACITY_REG \
     --opacity_cull 0.01 \
     --floater_cull_dist 0.2 \
     --mcmc_error_weight 3.5 \
