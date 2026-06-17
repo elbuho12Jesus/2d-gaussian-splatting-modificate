@@ -560,7 +560,7 @@ class GaussianModel:
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_beta, new_scaling, new_rotation, new_sb_params)
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, iteration=None):
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, iteration=None, prune_sustain=0):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
@@ -590,14 +590,28 @@ class GaussianModel:
         n2 = self.get_xyz.shape[0]
 
         # ============================================================
-        # ✅ PRUNE INMEDIATO 2DGS/3DGS ORIGINAL (run15, 2026-06-16).
-        # El prune "DBS sostenido" (low_opacity_counter>50) era CÓDIGO MUERTO:
-        # opacity_reset cada 3000 (=30 densifies < 50) borraba el contador →
-        # PRUNE=0 en los 144 pasos del run14 → 4.37M splats (31%) invisibles sin
-        # eliminar. Restauramos la poda inmediata del original: opacidad < cull,
-        # + grande en pantalla (max_radii2D), + grande en mundo (escala > 0.1·extent).
+        # PRUNE por opacidad. Dos modos (prune_sustain controla cuál):
+        #  - prune_sustain=0 (default): PRUNE INMEDIATO 2DGS/3DGS original (run15) →
+        #    opacidad < cull AHORA se poda en el acto.
+        #  - prune_sustain=N (>0): PRUNE SOSTENIDO → el splat debe llevar N pasos de
+        #    densify CONSECUTIVOS bajo el cull (low_opacity_counter > N) antes de podarse,
+        #    dándole tiempo a recuperar opacidad ("asentarse") por gradiente. ADVERTENCIA:
+        #    si opacity_reset cae cada M densifies con M<=N, el reset sube todo a 0.01>cull
+        #    → counter se borra → criterio jamás se cumple = CÓDIGO MUERTO (caso run14,
+        #    N=50 con M=30). Para que N=30 funcione, opacity_reset debe estar OFF o con
+        #    intervalo >> N·densification_interval. Ver low_opacity_counter_y_reset.html.
+        # En ambos modos se suma el prune por tamaño (screen/world), siempre inmediato.
         # ============================================================
-        prune_alpha_mask = (self.get_opacity < min_opacity).squeeze()
+        low_now = (self.get_opacity < min_opacity).squeeze()
+        if prune_sustain > 0:
+            if self.low_opacity_counter.shape[0] != low_now.shape[0]:
+                # Realineación defensiva (no debería pasar: postfix/prune lo mantienen).
+                self.low_opacity_counter = torch.zeros_like(low_now, dtype=torch.float, device="cuda")
+            self.low_opacity_counter[low_now] += 1
+            self.low_opacity_counter[~low_now] = 0
+            prune_alpha_mask = self.low_opacity_counter > prune_sustain
+        else:
+            prune_alpha_mask = low_now
         prune_mask = prune_alpha_mask
         big_points_vs = None
         big_points_ws = None
@@ -611,9 +625,14 @@ class GaussianModel:
             n_alpha = int(prune_alpha_mask.sum())
             n_screen = int(big_points_vs.sum()) if big_points_vs is not None else 0
             n_world = int(big_points_ws.sum()) if big_points_ws is not None else 0
+            if prune_sustain > 0:
+                alpha_lbl = (f"sostenido(>{prune_sustain})={n_alpha} "
+                             f"[low_now={int(low_now.sum())} cnt_max={int(self.low_opacity_counter.max())}]")
+            else:
+                alpha_lbl = f"opac<{min_opacity:g}={n_alpha}"
             print(f"[DENSIFY iter={iteration}] +clone={n1-n0} +split={n2-n1} "
                   f"(sel={(n2-n1)}) | PRUNE total={int(prune_mask.sum())} "
-                  f"[opac<{min_opacity:g}={n_alpha}, screen={n_screen}, world={n_world}] | "
+                  f"[{alpha_lbl}, screen={n_screen}, world={n_world}] | "
                   f"N:{n_before}->{n_before-int(prune_mask.sum())}", flush=True)
 
         # ---- aplicar pruning ----

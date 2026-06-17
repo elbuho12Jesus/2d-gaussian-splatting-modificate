@@ -227,7 +227,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(
                         opt.densify_grad_threshold, opt.opacity_cull,
-                        gaussians.spatial_lr_scale, size_threshold, iteration=iteration)
+                        gaussians.spatial_lr_scale, size_threshold, iteration=iteration,
+                        prune_sustain=int(getattr(opt, "classic_prune_sustain", 0)))
                 # opacity_reset clásico: condición simple del original (sin el gate
                 # reset_cutoff del MCMC). Es SEGURO aquí porque el ruido (1−o)^100
                 # está OFF en este camino → no abre ninguna compuerta de terremoto.

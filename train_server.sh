@@ -1,78 +1,55 @@
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export DEBUG_NOISE=20    # estadísticas [NOISE]/[GRAD]/[FLOATER]/[DEADGATE] cada 20 aplicaciones de ruido
-export DEBUG_MEM=1000    # pico de memoria + dev_free cada 1000 iters (delata zombies/OOM)
+export DEBUG_DENSIFY=1    # [DENSIFY]/[RESET] cada densify: clone/split, prune sostenido, counter, N
+export DEBUG_MEM=1000     # pico de memoria + dev_free cada 1000 iters (delata zombies/OOM)
 
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers          # nombre de la carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=17                    # número de run → output/m360/${DATASET}_beta_run${RUN}
-DEAD_SUSTAIN=5           # N del gate de muerte sostenida (relocate solo tras N checks bajo cull)
-CAP_MAX=3000000          # cap_max OFICIAL de flowers en beta-splatting (benchmark.py); run16 saturó 7.5M
+RUN=18                    # número de run → output/m360/${DATASET}_beta_run${RUN}
+PRUNE_SUSTAIN=25         # N del prune sostenido clásico (poda tras N densifies consecutivos bajo cull)
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
 # ───────────────────────────────────────────────────────────────────────────
 
-# run17: run16 con cap_max BAJADO 7.5M → 3M (oficial flowers en beta-splatting/benchmark.py).
-# run16 (MCMC+gate) GANÓ a run15 clásico en métricas honestas (PSNR 20.21 / SSIM 0.597 /
-# LPIPS 0.339) PERO el vídeo se ve peor: velo translúcido sobre-brillante en el fondo
-# (modo de error global) vs los parches negros localizados del clásico. run16 SATURÓ el
-# cap a 7.5M y ese exceso de primitivas alimenta el velo. Hipótesis run17: con el cap
-# oficial 3M, menos primitivas redundantes en el fondo → menos velo, vídeo más limpio.
-# Vigilar si el PSNR/LPIPS aguanta (3M es <½ de 7.5M) o si cae por falta de capacidad.
-# Resto idéntico a run16 (--densify_mode mcmc explícito con la nueva interfaz).
+# run18: densificación CLÁSICA 2DGS + PRUNE SOSTENIDO por opacidad (idea del usuario).
+# Sustituye el prune INMEDIATO de run15 (opac<cull → poda en el acto) por uno SOSTENIDO:
+# --classic_prune_sustain N → el splat debe llevar N pasos de densify CONSECUTIVOS bajo el
+# cull (low_opacity_counter > N) antes de podarse, dándole tiempo a "asentarse"/recuperar
+# opacidad por gradiente (+ el rescate del opacity_reset) antes de reciclarlo.
 #
-# run16: VUELTA AL MCMC + nuevo gate de muerte sostenida (--mcmc_dead_sustain).
-# Tras el fix del bug de load_ply (beta→1.0) que falseaba metrics.py, el clásico run15
-# dio honesto PSNR 20.13 / SSIM 0.548 / LPIPS 0.387. El MCMC (run9) tuvo in-train 21.54
-# > clásico → puede ganar. Probamos MCMC con el RUIDO DE RUN9 (híbrido covarianza,
-# componente normal isotrópica) + el low_opacity_counter reimplementado como gate.
+# CONFIG: reset 3000 + N=25 (decisión del usuario). Aritmética que lo hace VIABLE (no
+# código muerto como run14): densification_interval=100 + opacity_reset_interval=3000 →
+# 30 densifies entre resets; el reset sube todo a 0.01>cull y borra el counter, pero con
+# N=25 (<30) el counter SÍ cruza el umbral en los ~4-5 densifies previos a cada reset →
+# poda real. (run14 falló porque N=50 > 30 nunca se alcanzaba.) Conserva el opacity_reset
+# clásico y por tanto el size-prune (big_points, activo tras el 1er reset).
 #
-# RUIDO = RUN9 (confirmado en logs/flowers9.log):
-#   --cov_noise --cov_noise_normal 1.0  → anisótropo en el plano del surfel + normal
-#       ISOTRÓPICA = 1.0·media(escalas del plano). noise_opacity_exponent=100 (default).
-#   --noise_lr 3e3  (ojo: el default cambió a 5e4; run9 usó 3e3 explícito).
+# Resto = config clásica de run15 (la honesta: PSNR 20.13 / SSIM 0.548 / LPIPS 0.387):
+# SH3, lambda_normal=0.05, lambda_dist=0 (image-neutral), opacity_cull=0.005,
+# opacity_reg=0 + scale_reg=0 (regs Beta/MCMC OFF), densify_until=15000, 30k iters.
+# SIN cap_max (el clásico crece libre; run15 llegó a 9.4M) y SIN flags MCMC.
 #
-# GATE DE MUERTE SOSTENIDA (NUEVO, el objetivo del experimento):
-#   --mcmc_dead_sustain N  → dead_mask del relocate pasa de instantáneo (opac<=cull) a
-#       sostenido: el splat debe llevar N checks de densify (N·densification_interval =
-#       N·100 iters) CONSECUTIVOS bajo el cull antes de reciclarse. Da al fondo (que
-#       fluctúa) tiempo de recuperar opacidad antes de ser reubicado. N=0 = comportamiento
-#       run9 (instantáneo). Empezamos con N=5 (=500 iters). VIABLE en MCMC porque
-#       opacity_reset está OFF (1e9) y se arregló densification_postfix para PRESERVAR el
-#       contador (antes lo reseteaba cada add_new_gs → habría sido código muerto otra vez).
-#       Verás [DEADGATE it…] en el log (bajo DEBUG_NOISE): opac<=cull_ahora vs sostenido.
-#
-# Resto = config MCMC de la era run9/run13 (reset OFF, cap 7.5M, floater_cull 0.2 = run9):
-#   opacity_reg=0.01 (default/run9; el 0.05 de run13 era un barrido aparte → revertido).
-#   lambda_dist=10, lambda_normal=0.05, scale_reg=0.01, opacity_cull=0.01,
-#   mcmc_error_weight=3.5, mcmc_jitter_scale=1.5 (valores de run13; run9 exactos no
-#   registrados — ajustar si se quiere repro pura de run9).
-#   iterations=30000 (early-stop consolidado: el test pica ~30k; run9 a 50k decaía).
-#   densify_until_iter=25000 (cierre MCMC + 5k consolidación).
-#
-# NO recompila CUDA (solo Python). Tras el run: render_server.sh (RUN=17, ITER=30000) +
-# metrics.py. Comparar LPIPS/SSIM/PSNR vs run15 clásico (0.387/0.548/20.13) y run9
-# re-baseline. En el log vigilar [DEADGATE] (¿el gate reduce los relocate?) y nº de splats.
+# En el log [DENSIFY] vigilar: PRUNE total>0 con "sostenido(>25)=…" y cnt_max acercándose
+# a ~30 antes de cada [RESET]. Si PRUNE total=0 siempre → counter muerto (revisar). NO
+# recompila CUDA. Tras el run: render_server.sh (RUN=18, ITER=30000) + metrics.py.
+# Comparar LPIPS/SSIM/PSNR vs run15 (prune inmediato, 0.387/0.548/20.13).
 python train.py -s Datasets/${DATASET} \
     -m $MODEL \
     --eval \
+    --densify_mode classic \
     --iterations 30000 \
     --test_iterations 7000 15000 20000 25000 30000 \
-    --densify_until_iter 25000 \
+    --densify_from_iter 500 \
+    --densify_until_iter 15000 \
+    --densification_interval 100 \
+    --densify_grad_threshold 0.0002 \
+    --percent_dense 0.01 \
+    --opacity_reset_interval 3000 \
+    --opacity_cull 0.005 \
+    --classic_prune_sustain $PRUNE_SUSTAIN \
     --lambda_normal 0.05 \
-    --lambda_dist 10 \
-    --opacity_reset_interval 1000000000 \
-    --cap_max $CAP_MAX \
-    --densify_mode mcmc \
-    --noise_lr 3e3 \
-    --scale_reg 0.01 \
-    --opacity_reg 0.01 \
-    --opacity_cull 0.01 \
-    --floater_cull_dist 0.2 \
-    --mcmc_error_weight 3.5 \
-    --mcmc_jitter_scale 1.5 \
-    --cov_noise \
-    --cov_noise_normal 1.0 \
-    --mcmc_dead_sustain $DEAD_SUSTAIN \
+    --lambda_dist 0 \
+    --scale_reg 0 \
+    --opacity_reg 0 \
     2>&1 | tee $LOG

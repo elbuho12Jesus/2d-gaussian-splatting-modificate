@@ -176,6 +176,16 @@ class OptimizationParams(ParamGroup):
         # Las dos rutas están aisladas (if/elif/else en train.py): cambiar de modo NO
         # afecta a la otra. Ver docs/mcmc_beta_vs_clonesplit.html.
         self.densify_mode = "mcmc"
+        # --- Prune SOSTENIDO por opacidad en la densificación CLÁSICA ---
+        # 0 (default) = prune inmediato del 2DGS original: opacidad < cull se poda en el
+        # acto (config run15). >0 = el splat debe llevar N pasos de densify CONSECUTIVOS
+        # bajo el cull (low_opacity_counter > N) antes de podarse → le da N·densification_interval
+        # iters para "asentarse"/recuperar opacidad por gradiente antes de reciclarlo.
+        # OJO: requiere opacity_reset OFF (o intervalo >> N·densification_interval); si el
+        # reset cae cada M densifies con M<=N, sube todo a 0.01>cull → borra el counter →
+        # criterio jamás se cumple = CÓDIGO MUERTO (caso run14, N=50 con reset cada 30).
+        # Solo afecta al camino clásico (el MCMC usa --mcmc_dead_sustain).
+        self.classic_prune_sustain = 0
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 
