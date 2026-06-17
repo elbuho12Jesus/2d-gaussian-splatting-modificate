@@ -164,7 +164,18 @@ class OptimizationParams(ParamGroup):
         # el ruido posicional MCMC y el cull de floaters NO se aplican (son del MCMC).
         # Prueba para aislar si el garabato del fondo es del MCMC. Ver
         # docs/clone_split_logica_huecos.html y docs/mcmc_beta_vs_clonesplit.html.
+        # NOTA: alias retrocompatible de --densify_mode. Se mantiene para los scripts
+        # existentes (train_server.sh/train.sh) que ya lo pasan. Si se pasa
+        # --classic_densify, FUERZA el modo clásico aunque densify_mode diga "mcmc".
         self.classic_densify = False
+        # --- Selector EXPLÍCITO de algoritmo de densificación (interfaz preferida) ---
+        # "mcmc" (default) = relocate_gs + add_new_gs + ruido posicional MCMC.
+        # "classic"        = densify_and_prune (clone/split 2DGS) + opacity_reset.
+        # Es la cara legible de classic_densify (evita el bool de doble negación).
+        # Resolución en train.py: classic ⇔ (densify_mode=="classic") OR classic_densify.
+        # Las dos rutas están aisladas (if/elif/else en train.py): cambiar de modo NO
+        # afecta a la otra. Ver docs/mcmc_beta_vs_clonesplit.html.
+        self.densify_mode = "mcmc"
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

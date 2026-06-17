@@ -5,13 +5,23 @@ export DEBUG_MEM=1000    # pico de memoria + dev_free cada 1000 iters (delata zo
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers          # nombre de la carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=16                    # número de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=17                    # número de run → output/m360/${DATASET}_beta_run${RUN}
 DEAD_SUSTAIN=5           # N del gate de muerte sostenida (relocate solo tras N checks bajo cull)
+CAP_MAX=3000000          # cap_max OFICIAL de flowers en beta-splatting (benchmark.py); run16 saturó 7.5M
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
 # ───────────────────────────────────────────────────────────────────────────
 
+# run17: run16 con cap_max BAJADO 7.5M → 3M (oficial flowers en beta-splatting/benchmark.py).
+# run16 (MCMC+gate) GANÓ a run15 clásico en métricas honestas (PSNR 20.21 / SSIM 0.597 /
+# LPIPS 0.339) PERO el vídeo se ve peor: velo translúcido sobre-brillante en el fondo
+# (modo de error global) vs los parches negros localizados del clásico. run16 SATURÓ el
+# cap a 7.5M y ese exceso de primitivas alimenta el velo. Hipótesis run17: con el cap
+# oficial 3M, menos primitivas redundantes en el fondo → menos velo, vídeo más limpio.
+# Vigilar si el PSNR/LPIPS aguanta (3M es <½ de 7.5M) o si cae por falta de capacidad.
+# Resto idéntico a run16 (--densify_mode mcmc explícito con la nueva interfaz).
+#
 # run16: VUELTA AL MCMC + nuevo gate de muerte sostenida (--mcmc_dead_sustain).
 # Tras el fix del bug de load_ply (beta→1.0) que falseaba metrics.py, el clásico run15
 # dio honesto PSNR 20.13 / SSIM 0.548 / LPIPS 0.387. El MCMC (run9) tuvo in-train 21.54
@@ -41,7 +51,7 @@ LOG=logs/${DATASET}${RUN}.log
 #   iterations=30000 (early-stop consolidado: el test pica ~30k; run9 a 50k decaía).
 #   densify_until_iter=25000 (cierre MCMC + 5k consolidación).
 #
-# NO recompila CUDA (solo Python). Tras el run: render_server.sh (RUN=16, ITER=30000) +
+# NO recompila CUDA (solo Python). Tras el run: render_server.sh (RUN=17, ITER=30000) +
 # metrics.py. Comparar LPIPS/SSIM/PSNR vs run15 clásico (0.387/0.548/20.13) y run9
 # re-baseline. En el log vigilar [DEADGATE] (¿el gate reduce los relocate?) y nº de splats.
 python train.py -s Datasets/${DATASET} \
@@ -53,7 +63,8 @@ python train.py -s Datasets/${DATASET} \
     --lambda_normal 0.05 \
     --lambda_dist 10 \
     --opacity_reset_interval 1000000000 \
-    --cap_max 7500000 \
+    --cap_max $CAP_MAX \
+    --densify_mode mcmc \
     --noise_lr 3e3 \
     --scale_reg 0.01 \
     --opacity_reg 0.01 \

@@ -59,6 +59,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians = GaussianModel(dataset.sh_degree, getattr(dataset, "sb_number", 0))
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
+
+    # --- Resolución del algoritmo de densificación (UNA sola fuente de verdad) ---
+    # Interfaz preferida: --densify_mode {mcmc,classic}. Alias retrocompatible:
+    # --classic_densify (si se pasa, FUERZA clásico). Las dos rutas están aisladas
+    # más abajo (if classic / elif mcmc / else): cambiar de modo no afecta a la otra.
+    densify_mode = str(getattr(opt, "densify_mode", "mcmc")).lower()
+    if densify_mode not in ("mcmc", "classic"):
+        raise ValueError(f"--densify_mode debe ser 'mcmc' o 'classic', recibido: {densify_mode!r}")
+    use_classic_densify = (densify_mode == "classic") or bool(getattr(opt, "classic_densify", False))
+    print(f"[DENSIFY] modo = {'CLASSIC (clone/split 2DGS)' if use_classic_densify else 'MCMC (relocate/add_new)'}"
+          f"  (densify_mode={densify_mode}, classic_densify={bool(getattr(opt, 'classic_densify', False))})")
+
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
@@ -197,7 +209,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
                 # El prune clásico por tamaño en pantalla (size_threshold tras el primer
                 # opacity_reset) necesita el radio 2D máximo por splat. El MCMC no lo usa.
-                if opt.classic_densify:
+                if use_classic_densify:
                     gaussians.max_radii2D[visibility_filter] = torch.max(
                         gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
 
@@ -206,7 +218,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Activada por --classic_densify. Sin ruido MCMC ni cull de floaters
             # (son del camino MCMC). Réplica de la orquestación del 2DGS original.
             # ============================================================
-            if iteration < opt.densify_until_iter and opt.classic_densify:
+            if iteration < opt.densify_until_iter and use_classic_densify:
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     # Sanea NaN/Inf antes de densificar (mismo guard que el MCMC).
                     gaussians.sanitize_parameters(iteration=iteration)
