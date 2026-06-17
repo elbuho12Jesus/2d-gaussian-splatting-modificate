@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparativa runs 15–19 (flowers) · 2DGS→Beta</title>
+<style>
+  :root{
+    --bg:#0f1419; --card:#1a212b; --ink:#e6edf3; --mut:#9aa7b4; --line:#2b3744;
+    --mcmc:#7aa2f7; --classic:#bb9af7; --good:#9ece6a; --bad:#f7768e; --warn:#e0af68;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:32px 20px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 4px} h2{font-size:18px;margin:30px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .sub{color:var(--mut);margin:0 0 22px}
+  table{border-collapse:collapse;width:100%;background:var(--card);border-radius:10px;overflow:hidden;font-size:13.5px}
+  th,td{padding:9px 11px;text-align:center;border-bottom:1px solid var(--line)}
+  th{background:#222b38;font-weight:600;color:#cdd9e5;position:sticky;top:0}
+  td.l,th.l{text-align:left}
+  tr:last-child td{border-bottom:none}
+  .run{font-weight:700}
+  .tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11.5px;font-weight:600}
+  .tMCMC{background:rgba(122,162,247,.16);color:var(--mcmc)}
+  .tCLA{background:rgba(187,154,247,.16);color:var(--classic)}
+  .best{color:var(--good);font-weight:700}
+  .worst{color:var(--bad)}
+  .pend{color:var(--warn);font-style:italic}
+  .note{color:var(--mut);font-size:12px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 0;color:var(--mut);font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+  code{background:#222b38;padding:1px 6px;border-radius:5px;font-size:12.5px;color:#cdd9e5}
+  ul{margin:8px 0;padding-left:20px} li{margin:3px 0}
+  .arrow-up{color:var(--good)} .arrow-dn{color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Comparativa de runs 15 → 19 · dataset <b>flowers</b> (<code>--eval</code>, test held-out)</h1>
+  <p class="sub">Portado 2DGS → Beta Splatting. Métricas <b>honestas</b> vía <code>metrics.py</code> (tras el fix de <code>load_ply</code> beta) sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>. Generado 2026-06-17.</p>
+
+  <h2>1 · Parámetros clave por run</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Run</th><th>Densificación</th><th>Gate de poda / reciclaje</th>
+        <th>cap_max</th><th>opacity_reset</th><th>Primitivas finales</th><th class="l">Cambio respecto al anterior</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="l run">run15</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune <b>inmediato</b> (opac&lt;cull)</td>
+        <td>sin cap</td><td>3000</td><td>9.37 M</td>
+        <td class="l">Fix prune inmediato + fix <code>load_ply</code> beta. Primera lectura honesta del repo.</td>
+      </tr>
+      <tr>
+        <td class="l run">run16</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td><code>dead_sustain</code> = <b>5</b></td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l">Vuelta a MCMC + gate de muerte sostenida + ruido run9.</td>
+      </tr>
+      <tr>
+        <td class="l run">run17</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td><code>dead_sustain</code> = 5</td>
+        <td><b>3 M</b> <span class="note">(=cap)</span></td><td>OFF (1e9)</td><td>3.00 M</td>
+        <td class="l">cap 7.5M → 3M (oficial flowers). Probar si el cap alimentaba el velo.</td>
+      </tr>
+      <tr>
+        <td class="l run">run18</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune <b>sostenido</b> N=<b>25</b></td>
+        <td>sin cap</td><td>3000</td><td>10.09 M</td>
+        <td class="l">Prune sostenido (counter&gt;25) en vez de inmediato: dar tiempo al fondo a asentarse.</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run19</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td><code>dead_sustain</code> = <b>25</b></td>
+        <td><b>5 M</b></td><td>OFF (1e9)</td><td class="pend">pendiente</td>
+        <td class="l">Gate MCMC 5 → 25 (más atención al fondo) + cap 5M (entre 7.5M y 3M).</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="legend">
+    <span><span class="tag tMCMC">MCMC</span> = relocate + add_new + ruido posicional</span>
+    <span><span class="tag tCLA">CLÁSICO</span> = clone/split 2DGS + opacity_reset</span>
+  </div>
+
+  <h2>2 · Resultados cuantitativos</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Run</th>
+        <th>PSNR test ↑<br><span class="note">metrics.py</span></th>
+        <th>SSIM ↑</th><th>LPIPS ↓</th>
+        <th>PSNR in-train ↑<br><span class="note">@30k</span></th>
+        <th>train @30k</th><th>gap train−test</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="l run">run15 <span class="tag tCLA">CLA</span></td>
+        <td>20.13</td><td>0.548</td><td>0.387</td>
+        <td>20.21</td><td>~22.7</td><td>~2.5</td>
+      </tr>
+      <tr>
+        <td class="l run">run16 <span class="tag tMCMC">MCMC</span></td>
+        <td class="best">20.21</td><td class="best">0.597</td><td class="best">0.339</td>
+        <td class="best">21.60</td><td>25.14</td><td>3.54</td>
+      </tr>
+      <tr>
+        <td class="l run">run17 <span class="tag tMCMC">MCMC</span></td>
+        <td class="worst">19.87</td><td>0.587</td><td>0.359</td>
+        <td>21.50</td><td>24.15</td><td>2.65</td>
+      </tr>
+      <tr>
+        <td class="l run">run18 <span class="tag tCLA">CLA</span></td>
+        <td>20.12</td><td>0.549</td><td>0.387</td>
+        <td>20.30</td><td>22.73</td><td class="best">2.43</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run19 <span class="tag tMCMC">MCMC</span></td>
+        <td class="pend">pendiente</td><td class="pend">—</td><td class="pend">—</td>
+        <td class="pend">—</td><td class="pend">—</td><td class="pend">—</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">↑ mayor es mejor · ↓ menor es mejor. <b>Baseline 2DGS original</b> (local, mismo flowers): PSNR test 20.92.
+  Nota: <code>metrics.py</code> mide ~1.4 dB por debajo del eval in-train en ambas rutas (resize del pipeline de render); comparar siempre honesto-vs-honesto.</p>
+
+  <h2>3 · Lecturas</h2>
+  <div class="card">
+    <ul>
+      <li><b>Mejor calidad perceptual global = run16</b> (MCMC, gate 5, cap 7.5M): gana SSIM y LPIPS a todos. El MCMC reparte mejor el error que el clásico.</li>
+      <li><b>El cap NO era la causa del velo</b> (run17): bajar a 3M empeoró todo sin quitar la neblina translúcida. El velo es estructural del MCMC, no exceso de primitivas.</li>
+      <li><b>Clásico (run15/18) ≈ empatados</b> en métrica media (~20.1 / 0.549 / 0.387), por debajo del MCMC en SSIM/LPIPS. El <b>prune sostenido</b> (run18) <span class="arrow-up">rellenó el fondo</span> (más árboles traseros: −hueco en vistas 00000/00001/00003/00020) pero <span class="arrow-dn">vació otras</span> (00002) → redistribución de presupuesto fijo, neto nulo en la media.</li>
+      <li><b>Trade-off de modos de error:</b> CLÁSICO = huecos negros localizados (limpio pero con agujeros); MCMC = velo translúcido global (completo pero con neblina). La métrica media premia al MCMC; un vídeo continuo penaliza su velo.</li>
+      <li><b>run19 (en curso):</b> lleva la idea del prune sostenido al MCMC (gate 5→25) para que no recicle tan pronto los splats del fondo. cap 5M como punto medio. Hipótesis: más cobertura de fondo manteniendo la ventaja perceptual del MCMC.</li>
+    </ul>
+  </div>
+
+  <h2>4 · Parámetros fijos (comunes a todos los runs)</h2>
+  <div class="card note">
+    <code>--eval</code> · SH grado 3 · <code>iterations 30000</code> · <code>lambda_normal 0.05</code> ·
+    test @ 7k/15k/20k/25k/30k · <code>densify_from_iter 500</code> · <code>densification_interval 100</code>.
+    <br><b>MCMC (run16/17/19):</b> ruido run9 = <code>--cov_noise --cov_noise_normal 1.0 --noise_lr 3e3</code> ·
+    <code>lambda_dist 10</code> · <code>opacity_reg 0.01</code> · <code>scale_reg 0.01</code> · <code>opacity_cull 0.01</code> ·
+    <code>floater_cull_dist 0.2</code> · <code>mcmc_error_weight 3.5</code> · <code>mcmc_jitter_scale 1.5</code> ·
+    <code>densify_until_iter 25000</code> · reset OFF.
+    <br><b>CLÁSICO (run15/18):</b> <code>lambda_dist 0</code> · <code>opacity_reg 0</code> · <code>scale_reg 0</code> ·
+    <code>opacity_cull 0.005</code> · <code>densify_until_iter 15000</code> · <code>opacity_reset_interval 3000</code> · sin cap.
+  </div>
+
+</div>
+</body>
+</html>
