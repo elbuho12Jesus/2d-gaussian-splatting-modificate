@@ -38,7 +38,7 @@
 <div class="wrap">
 
   <h1>Comparativa de runs · dataset <b>flowers</b> (<code>--eval</code>, test held-out)</h1>
-  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>. Última actualización 2026-06-17 (run19).</p>
+  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>. Última actualización 2026-06-18 (run20).</p>
 
   <h2>1 · Parámetros clave por run</h2>
   <table>
@@ -84,6 +84,13 @@
         <td><b>5 M</b></td><td>OFF (1e9)</td><td>5.00 M</td>
         <td class="l">Gate MCMC 5 → 25 + cap 5M. <span class="bad">Empeoró y subió la niebla</span> (gate alto = recicla tarde = más floaters).</td>
       </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run20</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td><code>dead_sustain</code> = 5</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l">Base run16 + <code>opacity_reg</code> 0.01 → <b>0.02</b> (presión L1 anti-niebla, sin tocar relocate). <span class="bad">Empeoró y NO limpió el velo</span>.</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -115,7 +122,7 @@
       </tr>
       <tr>
         <td class="l run">run17 <span class="tag tMCMC">MCMC</span></td>
-        <td class="worst">19.87</td><td>0.587</td><td>0.359</td>
+        <td>19.87</td><td>0.587</td><td>0.359</td>
         <td>21.50</td><td>24.15</td><td>2.65</td>
       </tr>
       <tr>
@@ -127,6 +134,11 @@
         <td class="l run">run19 <span class="tag tMCMC">MCMC</span></td>
         <td>19.84</td><td>0.591</td><td>0.349</td>
         <td>21.52</td><td>24.58</td><td>3.06</td>
+      </tr>
+      <tr>
+        <td class="l run">run20 <span class="tag tMCMC">MCMC</span></td>
+        <td class="worst">19.54</td><td>0.596</td><td>0.343</td>
+        <td>21.46</td><td>24.81</td><td>3.35</td>
       </tr>
     </tbody>
   </table>
@@ -141,6 +153,7 @@
       <li><b>Clásico (run15/18) ≈ empatados</b> en métrica media (~20.1 / 0.549 / 0.387), por debajo del MCMC en SSIM/LPIPS. El <b>prune sostenido</b> (run18) <span class="arrow-up">rellenó el fondo</span> (más árboles traseros: −hueco en vistas 00000/00001/00003/00020) pero <span class="arrow-dn">vació otras</span> (00002) → redistribución de presupuesto fijo, neto nulo en la media.</li>
       <li><b>Trade-off de modos de error:</b> CLÁSICO = huecos negros localizados (limpio pero con agujeros); MCMC = velo translúcido global (completo pero con neblina). La métrica media premia al MCMC; un vídeo continuo penaliza su velo.</li>
       <li><b>run19 (gate 5→25, cap 5M):</b> <span class="arrow-dn">FALLÓ</span>. Subir el gate empeoró todo (PSNR −0.37, LPIPS +0.010) y <b>aumentó la niebla</b> (exceso-brillo 8.86 vs run16 8.47). Mecanismo: gate alto = recicla los moribundos más tarde = más floaters translúcidos sobreviven = más velo. <b>La niebla SON esos splats; darles más tiempo la alimenta.</b> Dirección correcta = opuesta: empujar los floaters a morir antes (<code>opacity_reg</code> ↑) con gate bajo.</li>
+      <li><b>run20 (<code>opacity_reg</code> 0.01→0.02, base run16):</b> <span class="arrow-dn">FALLÓ</span>. La presión L1 de opacidad <b>empeoró −0.67 PSNR / +0.004 LPIPS</b> (la peor PSNR del historial honesto) y <b>NO limpió las nubes blancas</b>: el render sigue sobre-brillante con exceso de píxeles blancos (00007 +2.68%, 00012 +2.24%, 00017 +1.48%). <code>opacity_reg</code> empuja TODA la opacidad por igual → no distingue floater de fondo legítimo → degrada sin limpiar. <b>Tercer sweep de regularizador MCMC que falla</b> (cap run17 · gate run19 · opacidad run20). <b>El log de ruido revela la pista:</b> <code>s(max)=4.816=extent</code> → hay surfels GIGANTES que abarcan toda la escena = candidatos al velo. → <b>run21: atacar por el TAMAÑO</b> (<code>scale_reg</code> 0.01→0.05, L1 que castiga a los gigantones), con <code>opacity_reg</code> revertido a 0.01. Riesgo a vigilar: <code>scale_reg</code> no distingue gigante-malo (floater) de gigante-bueno (cobertura del fondo rasante) → que no vacíe el fondo (render mean &lt; gt).</li>
     </ul>
   </div>
 
