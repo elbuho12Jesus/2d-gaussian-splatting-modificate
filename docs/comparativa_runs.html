@@ -38,7 +38,7 @@
 <div class="wrap">
 
   <h1>Comparativa de runs · dataset <b>flowers</b> (<code>--eval</code>, test held-out)</h1>
-  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>. Última actualización 2026-06-18 (run22).</p>
+  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>, peor en <span class="worst">rojo</span>. Última actualización 2026-06-22 (run25/run26). <span class="note">(run23/run24 omitidos a propósito.)</span></p>
 
   <h2>1 · Parámetros clave por run</h2>
   <table>
@@ -105,6 +105,20 @@
         <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
         <td class="l">"Sweet spot": <code>dead_sustain</code> 5→<b>15</b> + <code>scale_reg</code> 0.01→<b>0.03</b> (puntos medios). <span class="bad">PEOR de la tanda + MÁS velo</span> (dmean +1.95): el gate 15 reintrodujo la niebla.</td>
       </tr>
+      <tr>
+        <td class="l run">run25</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune <b>sostenido</b> N=<b>20</b></td>
+        <td>sin cap</td><td>3000 (4×)</td><td>10.95 M</td>
+        <td class="l">Vuelta al CLÁSICO. <code>prune_sustain</code> = <b>20</b> (punto medio entre run15 inmediato=0 y run18=25), densify 600→14900, sin cap → crece libre.</td>
+      </tr>
+      <tr>
+        <td class="l run">run26</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune <b>sostenido</b> N=<b>25</b></td>
+        <td>sin cap</td><td>3000 (4×)</td><td>10.77 M</td>
+        <td class="l"><code>prune_sustain</code> 20→<b>25</b> (= gate de run18). Más poda (PRUNE total 19k→23k) → algo menos de splats. Resto idéntico a run25.</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -142,7 +156,7 @@
       <tr>
         <td class="l run">run18 <span class="tag tCLA">CLA</span></td>
         <td>20.12</td><td>0.549</td><td>0.387</td>
-        <td>20.30</td><td>22.73</td><td class="best">2.43</td>
+        <td>20.30</td><td>22.73</td><td>2.43</td>
       </tr>
       <tr>
         <td class="l run">run19 <span class="tag tMCMC">MCMC</span></td>
@@ -156,13 +170,23 @@
       </tr>
       <tr>
         <td class="l run">run21 <span class="tag tMCMC">MCMC</span></td>
-        <td>19.63</td><td>0.592</td><td class="worst">0.344</td>
+        <td>19.63</td><td>0.592</td><td>0.344</td>
         <td>21.55</td><td>—</td><td>—</td>
       </tr>
       <tr>
         <td class="l run">run22 <span class="tag tMCMC">MCMC</span></td>
         <td class="worst">19.35</td><td>0.591</td><td>0.343</td>
         <td>—</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td class="l run">run25 <span class="tag tCLA">CLA</span></td>
+        <td>19.94</td><td class="worst">0.534</td><td class="worst">0.396</td>
+        <td>19.99</td><td>22.18</td><td class="best">2.19</td>
+      </tr>
+      <tr>
+        <td class="l run">run26 <span class="tag tCLA">CLA</span></td>
+        <td>19.99</td><td>0.537</td><td>0.394</td>
+        <td>20.03</td><td>22.22</td><td class="best">2.19</td>
       </tr>
     </tbody>
   </table>
@@ -180,6 +204,7 @@
       <li><b>run20 (<code>opacity_reg</code> 0.01→0.02, base run16):</b> <span class="arrow-dn">FALLÓ</span>. La presión L1 de opacidad <b>empeoró −0.67 PSNR / +0.004 LPIPS</b> y <b>NO limpió las nubes blancas</b>: el render sigue sobre-brillante con exceso de píxeles blancos (00007 +2.68%, 00012 +2.24%, 00017 +1.48%). <code>opacity_reg</code> empuja TODA la opacidad por igual → no distingue floater de fondo legítimo → degrada sin limpiar.</li>
       <li><b>run21 (<code>scale_reg</code> 0.01→0.05, base run16):</b> <span class="arrow-dn">FALLÓ en el fondo</span> (pero confirmó la causa). <b>Primer plano y color mejoraron</b> — <code>s(mean)</code> bajó −16% (5.52→4.61e-2). <b>Pero el fondo NO cambió:</b> <code>s(max)</code> quedó <b>clavado en 4.816 = <code>extent</code></b> en run20 y run21 → los surfels GIGANTES del fondo están topados en el <b>clamp del rasterizer</b> y <code>scale_reg</code> no los puede mover. Velo persiste; 7/22 vistas ya oscureciéndose (rozando vaciado). <b>SMOKING GUN: el fondo no es problema de nº de primitivas (cap saturado) sino de que cada surfel está topado en su tamaño máx. y sigue translúcido.</b> ⇒ <b>cap↑ descartado</b> (los gigantes están topados en tamaño, no en número → repetiría run8) y <b>clásico+scale_reg descartado</b> (clásico ya vacía el fondo a negro, scale_reg lo empeora).</li>
       <li><b>run22 (<code>dead_sustain</code> 5→15 + <code>scale_reg</code> 0.01→0.03, puntos medios):</b> <span class="arrow-dn">FALLÓ — PEOR de la tanda</span> (PSNR 19.35). Buscaba un "sweet spot" entre captar fondo (gate↑) y limpiar velo. <b>Resultado: MÁS velo</b> — dmean(render−gt) saltó a <b>+1.95</b> (run16 +1.00, run21 +1.17) = el más sobre-brillante. Las vistas de fondo se volvieron más BRILLANTES que el GT (00020 +1.30→+4.49, 00003 −1.50→+1.87): el modelo tendió una <b>bruma sobre-brillante</b> sobre el fondo en vez de capturarlo. <b>Confirma que la niebla es MONÓTONA en el gate: 5 &lt; 15 &lt; 25. NO hay sweet spot</b> — cualquier <code>dead_sustain</code> &gt; 5 alimenta el velo (mecanismo de run19). El "captar más fondo" de run18/19 era redistribución + más niebla, nunca captura fiel.</li>
+      <li><b>run25/run26 (vuelta al CLÁSICO, <code>prune_sustain</code> 20 y 25):</b> <span class="arrow-dn">sin avance</span>. Las dos son prácticamente <b>idénticas entre sí</b> (19.94–19.99 / 0.534–0.537 / 0.396–0.394, dentro del ruido) y <b>por debajo de run15/run18</b>, los mejores clásicos previos (~20.13 / 0.548 / 0.387). Crecen más libres (10.8–10.9 M splats vs 9.4–10.1 M de run15/18) y aun así pierden ~0.15 dB PSNR, −0.013 SSIM y +0.008 LPIPS: <b>más primitivas en el clásico no compran calidad</b> (cap saturado). run26 (gate 25) ≈ run25 (gate 20) ⇒ el <code>prune_sustain</code> entre 20 y 25 <b>no es palanca</b> (coherente con run18). Marcan el <b>peor SSIM/LPIPS del historial</b> (familia clásica = SSIM/LPIPS por debajo del MCMC) pero el <b>menor gap train−test (2.19)</b>: el clásico generaliza un pelín mejor, a costa de calidad perceptual. Confirman el muro estructural del clásico — ni superan a run15 ni a run16.</li>
       <li><b>VEREDICTO tras 5 sweeps fallidos (cap · gate · opacity_reg · scale_reg · gate-medio):</b> el velo/fondo es un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence). <code>dead_sustain 5</code> (run16) es el óptimo del gate. Cheap-sweep AGOTADO. Quedan solo palancas estructurales: <b>(A)</b> aceptar run16 como techo del 2D · <b>(B)</b> migrar a gsplat/3D (arreglo real) · <b>(C)</b> tocar el clamp de escala del rasterizer (baja prob, probablemente empeora el velo).</li>
     </ul>
   </div>
@@ -192,8 +217,9 @@
     <code>lambda_dist 10</code> · <code>opacity_reg 0.01</code> · <code>scale_reg 0.01</code> · <code>opacity_cull 0.01</code> ·
     <code>floater_cull_dist 0.2</code> · <code>mcmc_error_weight 3.5</code> · <code>mcmc_jitter_scale 1.5</code> ·
     <code>densify_until_iter 25000</code> · reset OFF.
-    <br><b>CLÁSICO (run15/18):</b> <code>lambda_dist 0</code> · <code>opacity_reg 0</code> · <code>scale_reg 0</code> ·
-    <code>opacity_cull 0.005</code> · <code>densify_until_iter 15000</code> · <code>opacity_reset_interval 3000</code> · sin cap.
+    <br><b>CLÁSICO (run15/18/25/26):</b> <code>lambda_dist 0</code> · <code>opacity_reg 0</code> · <code>scale_reg 0</code> ·
+    <code>opacity_cull 0.005</code> · <code>densify_grad_threshold 2e-4</code> · <code>densify_until_iter 15000</code> ·
+    <code>opacity_reset_interval 3000</code> · sin cap. <code>classic_prune_sustain</code>: run15=0 (inmediato), run18/26=25, run25=20.
   </div>
 
 </div>
