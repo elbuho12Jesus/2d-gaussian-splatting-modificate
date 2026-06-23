@@ -459,6 +459,17 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
+
+        # [BETA] contador de splats con beta<0.1 (los "platos planos" que --freeze_low_beta
+        # congela). Sirve para interpretar el A/B run30: si beta<0.1 es ~0%, el freeze es un
+        # no-op por construcción y el experimento no concluye nada. Ver docs/beta_kernel_y_freeze_low_beta.html
+        with torch.no_grad():
+            _beta = scene.gaussians.get_beta.flatten()
+            _n = _beta.numel()
+            _low = int((_beta < 0.1).sum().item())
+            print("\n[ITER {}] [BETA] total={} | beta<0.1: {} ({:.3f}%) | beta min/mean/max = {:.4f}/{:.4f}/{:.4f}".format(
+                iteration, _n, _low, 100.0 * _low / max(_n, 1),
+                _beta.min().item(), _beta.mean().item(), _beta.max().item()))
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
 
