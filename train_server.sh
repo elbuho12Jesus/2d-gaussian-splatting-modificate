@@ -5,7 +5,7 @@ export DEBUG_MEM=1000    # pico de memoria + dev_free cada 1000 iters (delata zo
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers          # nombre de la carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=28                    # número de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=30                    # número de run → output/m360/${DATASET}_beta_run${RUN}
 DEAD_SUSTAIN=5           # base run16 (óptimo del gate; >5 = más niebla, monótono)
 CAP_MAX=7500000          # 7.5M = base run16 (cap saturado; mantenido por decisión del usuario)
 OPACITY_REG=0.01         # base run16
@@ -15,25 +15,30 @@ MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
 # ───────────────────────────────────────────────────────────────────────────
 
-# run28: ABLACIÓN DE DISTORSIÓN. Réplica EXACTA de run16 (mejor MCMC) salvo lambda_dist 10→0.
-# Objetivo: aislar cuánto aporta la distorsión, que run16 SÍ llevaba (lambda_dist=10) sin que
-# lo supiéramos hasta ahora (el log de run16 muestra distort=0.00004…0.00160, NO 0.00000 →
-# confirmado activo). run27 fue el 1er test de distorsión EN CLÁSICO (falló); este es el 1er
-# test SIN distorsión en MCMC. Único cambio vs run16: --lambda_dist 10 → 0. Todo lo demás
-# idéntico a run16 (la base): dead_sustain 5, scale_reg 0.01, opacity_reg 0.01, cap 7.5M.
+# run30: A/B DEL FIX #2 DEL BACKWARD (run9). Réplica EXACTA de run16 (mejor MCMC) + --freeze_low_beta.
+# Objetivo: aislar por fin cuánto aporta el FIX #2 (descongelar geometría/opacidad de los splats
+# con beta<0.1). run9 metió los 3 fixes del backward JUNTOS y medidos in-train → "mejora ligera"
+# combinada, nunca aislada ni honesta. Este es el 1er A/B aislado: --freeze_low_beta ON reproduce
+# BIT-EXACTO el comportamiento PRE-run9 (esos splats CONGELADOS), dejando FIX #1 y #3 intactos.
+# Único cambio vs run16: + --freeze_low_beta. Todo lo demás idéntico a run16 (la base): lambda_dist
+# 10 (¡ojo, run28 lo bajó a 0; aquí VUELVE a 10!), dead_sustain 5, scale_reg 0.01, opacity_reg 0.01,
+# cap 7.5M, ruido run9.
 #
-# HIPÓTESIS: en flowers (no acotada) distort≈0.0016 = efecto débil pero NO nulo (~3-8% de la
-# loss). Si run28 ≈ run16 → la distorsión es irrelevante aquí (confirma que está bien descartada).
-# Si run28 mejora SSIM/LPIPS → la distorsión adelgazaba superficies y alimentaba el velo (como
-# en clásico run27). Si run28 empeora → la distorsión sí ayudaba algo en MCMC.
+# REQUIERE RECOMPILAR EL RASTERIZER en el servidor (cambió la ABI del backward):
+#   docker compose exec surfel_env pip install --force-reinstall --no-deps /workspace/submodules/diff-surfel-rasterization
+#
+# HIPÓTESIS: run30 = comportamiento viejo (congelado), run16 = nuevo (run9). Si run30 ≈ run16 →
+# el FIX #2 es casi un no-op (pocos splats con beta<0.1) y la "mejora de run9" venía de FIX #1/#3.
+# Si run30 PEOR que run16 → descongelar SÍ ayudó (FIX #2 justificado). Si run30 MEJOR → sorpresa:
+# congelar low-beta sería preferible (el fix habría sido contraproducente).
 #
 # Resto = run16: ruido run9 (--cov_noise --cov_noise_normal 1.0 --noise_lr 3e3), reset OFF,
 # lambda_normal=0.05, opacity_cull=0.01, floater_cull_dist=0.2, mcmc_error_weight=3.5,
 # mcmc_jitter_scale=1.5, iterations=30000, densify_until_iter=25000.
 #
-# En el log vigilar: distort DEBE ser 0.00000 todo el run (verifica que lambda_dist=0 surtió
-# efecto); ¿exceso-brillo/niebla per-vista vs run16? nº de splats. NO recompila CUDA. Tras el
-# run: render_server.sh (RUN=28) + metrics.py. Comparar HONESTO vs run16 (0.339/0.597/20.21).
+# En el log vigilar: distort debe volver a ≈0.0016 (lambda_dist=10 otra vez); ¿cuántos splats
+# con beta<0.1 hay? (si son ~0, el A/B saldrá plano). Tras el run: render_server.sh (RUN=30) +
+# metrics.py. Comparar HONESTO vs run16 (0.339/0.597/20.21).
 python train.py -s Datasets/${DATASET} \
     -m $MODEL \
     --eval \
@@ -42,7 +47,8 @@ python train.py -s Datasets/${DATASET} \
     --test_iterations 7000 15000 20000 25000 30000 \
     --densify_until_iter 25000 \
     --lambda_normal 0.05 \
-    --lambda_dist 0 \
+    --lambda_dist 10 \
+    --freeze_low_beta \
     --opacity_reset_interval 1000000000 \
     --cap_max $CAP_MAX \
     --noise_lr 3e3 \
