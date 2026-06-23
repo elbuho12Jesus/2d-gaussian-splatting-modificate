@@ -38,7 +38,7 @@
 <div class="wrap">
 
   <h1>Comparativa de runs · dataset <b>flowers</b> (<code>--eval</code>, test held-out)</h1>
-  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>, peor en <span class="worst">rojo</span>. Última actualización 2026-06-22 (run27, <code>lambda_dist</code> en clásico). <span class="note">(run23/run24 omitidos a propósito.)</span></p>
+  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>, peor en <span class="worst">rojo</span>. Última actualización 2026-06-23 (run29, cap 9.5M en MCMC). <span class="note">(run23/run24 omitidos a propósito.)</span></p>
 
   <h2>1 · Parámetros clave por run</h2>
   <table>
@@ -126,6 +126,20 @@
         <td>sin cap</td><td>3000 (4×)</td><td>10.86 M</td>
         <td class="l">= run26 + <code>lambda_dist</code> 0→<b>10</b> (reg distorsión). 1er test de distorsión en CLÁSICO (atacar el velo concentrando pesos por rayo). <span class="bad">FALLÓ: empeoró todo</span> — en flowers (no acotada) la distorsión es ínfima (<code>distort≈0</code>) y agrava los huecos del fondo.</td>
       </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run28</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>ABLACIÓN distorsión</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>Réplica EXACTA de run16</b> salvo <code>lambda_dist</code> <b>10→0</b>. Ablación de control: aislar cuánto aporta la distorsión que run16 SÍ llevaba. <span class="bad">Empeora en las 3 métricas</span> ⇒ <b>la distorsión SÍ aporta en MCMC</b> (cierra la asimetría con run27: ayuda en MCMC, estorba en clásico). <code>lambda_dist=10</code> de run16 bien puesto.</td>
+      </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run29</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>subir cap</td>
+        <td><b>9.5 M</b></td><td>—</td><td>9.5 M</td>
+        <td class="l"><b>Cap 7.5M→9.5M</b> (resto = run16). Ply topado exacto en 9.5M splats. <span class="bad">+2M primitivas NO compran calidad</span>: PSNR −0.25, SSIM −0.0017, LPIPS −0.0013 (ínfimo). <b>Confirma cap saturado en MCMC honesto y en ambas direcciones</b> (3M peor=run17, 7.5M mejor=run16, 9.5M plano). El velo del fondo es estructural, no nº de primitivas.</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -200,6 +214,16 @@
         <td>19.48</td><td class="worst">0.530</td><td class="worst">0.402</td>
         <td>19.63</td><td>22.01</td><td>2.38</td>
       </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run28 <span class="tag tMCMC">MCMC</span></td>
+        <td>19.94</td><td>0.596</td><td>0.340</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run29 <span class="tag tMCMC">MCMC</span></td>
+        <td>19.96</td><td>0.596</td><td>0.338</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
     </tbody>
   </table>
   <p class="note">↑ mayor es mejor · ↓ menor es mejor. <b>Baseline 2DGS original</b> (local, mismo flowers): PSNR test 20.92.
@@ -218,6 +242,8 @@
       <li><b>run22 (<code>dead_sustain</code> 5→15 + <code>scale_reg</code> 0.01→0.03, puntos medios):</b> <span class="arrow-dn">FALLÓ — PEOR de la tanda</span> (PSNR 19.35). Buscaba un "sweet spot" entre captar fondo (gate↑) y limpiar velo. <b>Resultado: MÁS velo</b> — dmean(render−gt) saltó a <b>+1.95</b> (run16 +1.00, run21 +1.17) = el más sobre-brillante. Las vistas de fondo se volvieron más BRILLANTES que el GT (00020 +1.30→+4.49, 00003 −1.50→+1.87): el modelo tendió una <b>bruma sobre-brillante</b> sobre el fondo en vez de capturarlo. <b>Confirma que la niebla es MONÓTONA en el gate: 5 &lt; 15 &lt; 25. NO hay sweet spot</b> — cualquier <code>dead_sustain</code> &gt; 5 alimenta el velo (mecanismo de run19). El "captar más fondo" de run18/19 era redistribución + más niebla, nunca captura fiel.</li>
       <li><b>run25/run26 (vuelta al CLÁSICO, <code>prune_sustain</code> 20 y 25):</b> <span class="arrow-dn">sin avance</span>. Las dos son prácticamente <b>idénticas entre sí</b> (19.94–19.99 / 0.534–0.537 / 0.396–0.394, dentro del ruido) y <b>por debajo de run15/run18</b>, los mejores clásicos previos (~20.13 / 0.548 / 0.387). Crecen más libres (10.8–10.9 M splats vs 9.4–10.1 M de run15/18) y aun así pierden ~0.15 dB PSNR, −0.013 SSIM y +0.008 LPIPS: <b>más primitivas en el clásico no compran calidad</b> (cap saturado). run26 (gate 25) ≈ run25 (gate 20) ⇒ el <code>prune_sustain</code> entre 20 y 25 <b>no es palanca</b> (coherente con run18). Marcan el <b>peor SSIM/LPIPS del historial</b> (familia clásica = SSIM/LPIPS por debajo del MCMC) pero el <b>menor gap train−test (2.19)</b>: el clásico generaliza un pelín mejor, a costa de calidad perceptual. Confirman el muro estructural del clásico — ni superan a run15 ni a run16.</li>
       <li><b>run27 (= run26 + <code>lambda_dist</code> 0→10 en CLÁSICO):</b> <span class="arrow-dn">FALLÓ — confirma la teoría</span>. Comparación directa vs run26 (única diferencia = distorsión): <b>PSNR −0.51 (19.99→19.48), SSIM −0.007, LPIPS +0.008</b>. Marca el <b>peor SSIM (0.530) y peor LPIPS (0.402) del historial</b> (su LPIPS empata al del original 2DGS). El log muestra <code>distort≈0.00000</code>: en <code>flowers</code> (escena NO acotada) la distorsión es de magnitud ínfima — el propio 2DGS la desactiva (<code>lambda_dist=0</code>) en MipNeRF360 — pero su gradiente bastó para <b>agravar los huecos del fondo</b> (la distorsión adelgaza/concentra superficies → empeora la sub-cobertura, que es el modo de error del clásico). In-train también cae @30k (19.96@15k→19.63@30k). <b>Distorsión va en la dirección equivocada para el clásico: ataca el velo translúcido, pero el clásico no tiene velo, tiene huecos.</b></li>
+      <li><b>run28 (ABLACIÓN: réplica EXACTA de run16 en MCMC salvo <code>lambda_dist</code> 10→0):</b> <span class="arrow-dn">empeora — la distorsión SÍ aportaba</span>. vs run16 (única diferencia = distorsión): <b>PSNR −0.27 (20.21→19.94), SSIM −0.0013, LPIPS +0.0012</b>. Es decir, <b>quitar</b> la distorsión empeora las tres métricas ⇒ el <code>lambda_dist=10</code> que llevaba run16 estaba aportando (poco pero consistente). Junto a run27 cierra la <b>asimetría de la distorsión entre modos</b>: <b>AYUDA en MCMC</b> (su modo de error es el velo translúcido, que la distorsión combate concentrando pesos por rayo) y <b>ESTORBA en clásico</b> (su modo de error son huecos negros, que la distorsión agrava). No es un intento de mejora sino una <b>ablación de control</b> que valida una pieza de run16 — <b>run16 sigue siendo el techo del 2D</b> (20.21 / 0.597 / 0.339).</li>
+      <li><b>run29 (subir cap 7.5M→9.5M en MCMC, resto = run16):</b> <span class="arrow-dn">cap saturado, sin avance</span>. Ply topado exacto en <b>9.5 M splats</b>. vs run16: <b>PSNR −0.25 (20.21→19.96), SSIM −0.0017, LPIPS −0.0013</b> (esta última mejora es ínfima, dentro del ruido). <b>+2 M primitivas no compran calidad.</b> Confirma el cap saturado por fin en métrica honesta MCMC y en <b>ambas direcciones</b>: 3M peor (run17), 7.5M mejor (run16), 9.5M plano (run29). Coherente con run8 (9M in-train, "solo sube train"): las primitivas extra memorizan el train, no arreglan el fondo. <b>El velo translúcido del fondo es estructural del surfel 2D, no un problema de número de primitivas → cap descartado definitivamente como palanca.</b></li>
       <li><b>VEREDICTO tras 5 sweeps fallidos (cap · gate · opacity_reg · scale_reg · gate-medio):</b> el velo/fondo es un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence). <code>dead_sustain 5</code> (run16) es el óptimo del gate. Cheap-sweep AGOTADO. Quedan solo palancas estructurales: <b>(A)</b> aceptar run16 como techo del 2D · <b>(B)</b> migrar a gsplat/3D (arreglo real) · <b>(C)</b> tocar el clamp de escala del rasterizer (baja prob, probablemente empeora el velo).</li>
     </ul>
   </div>

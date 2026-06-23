@@ -163,7 +163,8 @@ renderCUDA(
 	float* __restrict__ dL_dnormal3D,
 	float* __restrict__ dL_dopacity,
 	float* __restrict__ dL_dbeta,
-	float* __restrict__ dL_dcolors)
+	float* __restrict__ dL_dcolors,
+	const bool freeze_low_beta)
 {
 	// We rasterize again. Compute necessary block info.
 	auto block = cg::this_thread_block();
@@ -394,7 +395,18 @@ renderCUDA(
 			dL_dalpha *= T;
 			// Update last alpha (to be used in the next iteration)
 			last_alpha = alpha;
-			
+
+			// TOGGLE A/B (--freeze_low_beta): reproduce el comportamiento PRE-run9.
+			// Cuando el flag está ACTIVO, los splats con beta<0.1 saltan TODO el
+			// resto del cuerpo del bucle (gradiente de beta + geometría + opacidad)
+			// -> quedan CONGELADOS, igual que el `continue` original de FIX #2.
+			// Cuando está APAGADO (default), no hace nada y rige el comportamiento
+			// run9 (geometría/opacidad siempre vivas; solo se salta el grad de beta).
+			// El color y la normal van ANTES de este punto -> nunca se congelan,
+			// idéntico al original. dL_dopacity se escribe más abajo -> sí se congela.
+			if (freeze_low_beta && beta_j < 0.1f)
+				continue;
+
 			// ===============================
 			// Beta kernel backward extensions (STABLE)
 			// ===============================
@@ -763,7 +775,8 @@ void BACKWARD::render(
 	float* dL_dnormal3D,
 	float* dL_dopacity,
 	float* dL_dbeta,
-	float* dL_dcolors)
+	float* dL_dcolors,
+	const bool freeze_low_beta)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> >(
 		ranges,
@@ -786,6 +799,7 @@ void BACKWARD::render(
 		dL_dnormal3D,
 		dL_dopacity,
 		dL_dbeta,
-		dL_dcolors
+		dL_dcolors,
+		freeze_low_beta
 		);
 }

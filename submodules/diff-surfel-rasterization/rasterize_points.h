@@ -62,8 +62,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int64_t R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
-	const bool debug);
-		
+	const bool debug,
+	const bool freeze_low_beta);
+	
 torch::Tensor markVisible(
 		torch::Tensor& means3D,
 		torch::Tensor& viewmatrix,

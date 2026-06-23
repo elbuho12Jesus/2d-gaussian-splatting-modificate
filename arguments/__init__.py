@@ -76,6 +76,9 @@ class PipelineParams(ParamGroup):
         self.compute_cov3D_python = False
         self.depth_ratio = 0.0
         self.debug = False
+        # A/B FIX #2 (run9): si True, congela geometría/opacidad de splats con
+        # beta<0.1 en el backward (comportamiento PRE-run9). Default False = run9.
+        self.freeze_low_beta = False
         super().__init__(parser, "Pipeline Parameters")
 
 class OptimizationParams(ParamGroup):

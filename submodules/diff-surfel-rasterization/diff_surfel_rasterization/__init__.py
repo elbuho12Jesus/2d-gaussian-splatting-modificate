@@ -132,7 +132,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 num_rendered,
                 binningBuffer,
                 imgBuffer,
-                raster_settings.debug)
+                raster_settings.debug,
+                raster_settings.freeze_low_beta)
 
         # Compute gradients for relevant tensors by invoking backward method
         if raster_settings.debug:
@@ -174,6 +175,9 @@ class GaussianRasterizationSettings(NamedTuple):
     campos : torch.Tensor
     prefiltered : bool
     debug : bool
+    # Toggle A/B del freeze de splats con beta<0.1 en el backward (FIX #2 run9).
+    # Default False = comportamiento run9 (geometría/opacidad siempre vivas).
+    freeze_low_beta : bool = False
 
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):

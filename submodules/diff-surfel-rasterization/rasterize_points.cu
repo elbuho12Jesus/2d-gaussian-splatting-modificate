@@ -160,7 +160,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int64_t R,
 	const torch::Tensor& binningBuffer,
 	const torch::Tensor& imageBuffer,
-	const bool debug) 
+	const bool debug,
+	const bool freeze_low_beta)
 {
 
   CHECK_INPUT(background);
@@ -233,7 +234,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  dL_dsh.contiguous().data<float>(),
 	  dL_dscales.contiguous().data<float>(),
 	  dL_drotations.contiguous().data<float>(),
-	  debug);
+	  debug,
+	  freeze_low_beta);
   }
 
   return std::make_tuple(dL_dmeans2D, dL_dcolors, dL_dopacity, dL_dbeta, dL_dmeans3D, dL_dtransMat, dL_dsh, dL_dscales, dL_drotations);
