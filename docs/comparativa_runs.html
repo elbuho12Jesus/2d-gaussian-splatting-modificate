@@ -38,7 +38,7 @@
 <div class="wrap">
 
   <h1>Comparativa de runs · dataset <b>flowers</b> (<code>--eval</code>, test held-out)</h1>
-  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>, peor en <span class="worst">rojo</span>. Última actualización 2026-06-24 (run30, A/B aislado del FIX #2 del backward). <span class="note">(run23/run24 omitidos a propósito.)</span></p>
+  <p class="sub">Portado 2DGS → Beta Splatting. Historial desde run15 (primera lectura honesta tras el fix de <code>load_ply</code> beta); se añaden runs futuros aquí. Métricas <b>honestas</b> vía <code>metrics.py</code> sobre las 22 vistas de test. Mejor valor de cada métrica en <span class="best">verde</span>, peor en <span class="worst">rojo</span>. Última actualización 2026-06-25 (run32, <code>opacity_reg</code> 5× → primera palanca que sube PSNR, mejor PSNR honesto de la familia MCMC). <span class="note">(run23/run24 omitidos a propósito; run31 = mismo experimento, renumerado a run32 antes de lanzar.)</span></p>
 
   <h2>1 · Parámetros clave por run</h2>
   <table>
@@ -147,6 +147,13 @@
         <td>7.5 M</td><td>—</td><td>7.5 M</td>
         <td class="l"><b>Réplica EXACTA de run16 + <code>--freeze_low_beta</code> ON</b> (revierte FIX #2 de run9 → splats con <code>beta&lt;0.1</code> CONGELADOS, comportamiento PRE-run9). <span class="bad">Empeora en las 3 métricas</span>: PSNR −0.56, SSIM −0.0032, LPIPS +0.0042. Congelar los low-beta es peor ⇒ <b>el FIX #2 de run9 (descongelar, flag OFF=default) SÍ aporta</b>, ahora medido AISLADO y HONESTO. Ablación de control (como run28): valida una pieza de run16/run9, no abre palanca nueva.</td>
       </tr>
+      <tr style="background:rgba(63,185,80,.08)">
+        <td class="l run">run32</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>Réplica EXACTA de run16 + <code>opacity_reg</code> 0.01 → <b>0.05</b> (5×)</b>. El 2× tímido de run20 (0.02) cayó en un valle; el empuje 5× saltó a otro régimen. <span class="good">MEJOR PSNR de toda la familia MCMC</span>: 20.62 (run16 20.21, <b>+0.41 dB</b>). <b>Cierra casi todo el gap con el original</b> (20.89): −0.69 → −0.27 dB. Coste perceptual: LPIPS +0.0135, SSIM −0.0015. Trade-off PSNR↔perceptual; mecanismo confirmado (adelgaza el velo: dmean +0.999→+0.627).</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -173,7 +180,7 @@
       </tr>
       <tr>
         <td class="l run">run16 <span class="tag tMCMC">MCMC</span></td>
-        <td class="best">20.21</td><td class="best">0.597</td><td class="best">0.339</td>
+        <td>20.21</td><td class="best">0.597</td><td class="best">0.339</td>
         <td class="best">21.60</td><td>25.14</td><td>3.54</td>
       </tr>
       <tr>
@@ -236,6 +243,11 @@
         <td>19.65</td><td>0.594</td><td>0.343</td>
         <td>—</td><td>—</td><td>—</td>
       </tr>
+      <tr style="background:rgba(63,185,80,.08)">
+        <td class="l run">run32 <span class="tag tMCMC">MCMC</span></td>
+        <td class="best">20.62</td><td>0.594</td><td>0.353</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
     </tbody>
   </table>
   <p class="note">↑ mayor es mejor · ↓ menor es mejor. <b>Baseline 2DGS original</b> (local, mismo flowers): PSNR test 20.92.
@@ -257,7 +269,8 @@
       <li><b>run28 (ABLACIÓN: réplica EXACTA de run16 en MCMC salvo <code>lambda_dist</code> 10→0):</b> <span class="arrow-dn">empeora — la distorsión SÍ aportaba</span>. vs run16 (única diferencia = distorsión): <b>PSNR −0.27 (20.21→19.94), SSIM −0.0013, LPIPS +0.0012</b>. Es decir, <b>quitar</b> la distorsión empeora las tres métricas ⇒ el <code>lambda_dist=10</code> que llevaba run16 estaba aportando (poco pero consistente). Junto a run27 cierra la <b>asimetría de la distorsión entre modos</b>: <b>AYUDA en MCMC</b> (su modo de error es el velo translúcido, que la distorsión combate concentrando pesos por rayo) y <b>ESTORBA en clásico</b> (su modo de error son huecos negros, que la distorsión agrava). No es un intento de mejora sino una <b>ablación de control</b> que valida una pieza de run16 — <b>run16 sigue siendo el techo del 2D</b> (20.21 / 0.597 / 0.339).</li>
       <li><b>run30 (A/B AISLADO del FIX #2 del backward: réplica EXACTA de run16 + <code>--freeze_low_beta</code> ON):</b> <span class="arrow-dn">empeora — el FIX #2 SÍ aportaba</span>. Honesto <b>19.65 / 0.594 / 0.343</b>. El flag ON revierte el FIX #2 de run9 al comportamiento PRE-run9: los splats con <code>beta&lt;0.1</code> quedan <b>congelados</b> (sin gradiente en geometría/opacidad/beta). vs run16 (única diferencia = el flag): <b>PSNR −0.56 (20.21→19.65), SSIM −0.0032, LPIPS +0.0042</b>. Que congelar sea peor en las tres métricas <b>prueba, aislado y honesto, que el FIX #2 de run9 (descongelar los low-beta, flag OFF=default) SÍ aporta</b> — antes solo teníamos la mejora <i>combinada + in-train</i> de run9 (los 3 fixes juntos, nunca separada ni honesta). Cap topado exacto en 7.5M (=run16). Como run28, es una <b>ablación de control</b>: valida una pieza de run16/run9, no abre palanca nueva. Cierra el "PENDIENTE: medir" que arrastraba <code>--freeze_low_beta</code>. <b>Dejar el flag en OFF; run16 sigue siendo el techo del 2D.</b></li>
       <li><b>run29 (subir cap 7.5M→9.5M en MCMC, resto = run16):</b> <span class="arrow-dn">cap saturado, sin avance</span>. Ply topado exacto en <b>9.5 M splats</b>. vs run16: <b>PSNR −0.25 (20.21→19.96), SSIM −0.0017, LPIPS −0.0013</b> (esta última mejora es ínfima, dentro del ruido). <b>+2 M primitivas no compran calidad.</b> Confirma el cap saturado por fin en métrica honesta MCMC y en <b>ambas direcciones</b>: 3M peor (run17), 7.5M mejor (run16), 9.5M plano (run29). Coherente con run8 (9M in-train, "solo sube train"): las primitivas extra memorizan el train, no arreglan el fondo. <b>El velo translúcido del fondo es estructural del surfel 2D, no un problema de número de primitivas → cap descartado definitivamente como palanca.</b></li>
-      <li><b>VEREDICTO tras 5 sweeps fallidos (cap · gate · opacity_reg · scale_reg · gate-medio):</b> el velo/fondo es un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence). <code>dead_sustain 5</code> (run16) es el óptimo del gate. Cheap-sweep AGOTADO. Quedan solo palancas estructurales: <b>(A)</b> aceptar run16 como techo del 2D · <b>(B)</b> migrar a gsplat/3D (arreglo real) · <b>(C)</b> tocar el clamp de escala del rasterizer (baja prob, probablemente empeora el velo).</li>
+      <li><b>run32 (<code>opacity_reg</code> 0.01→0.05, 5×, base run16):</b> <span class="arrow-up">PRIMERA palanca que SUBE PSNR</span> — honesto <b>20.62 / 0.594 / 0.353</b>. <b>Mejor PSNR de toda la familia MCMC</b> (run16 20.21, <b>+0.41 dB</b>), y <b>cierra casi todo el gap con el original</b> (20.89): de −0.69 (run16) a <b>−0.27 dB</b>. Reabre lo que run20 había cerrado mal: el 2× (0.02) cayó en un valle (19.54), pero el 5× saltó a otro régimen → <b>la curva de <code>opacity_reg</code> NO es monótona</b>, run20 solo se quedó corto. <b>Mecanismo confirmado por diagnóstico de brillo:</b> dmean(render−gt) cae de <b>+0.999 (run16) a +0.627 (run32)</b> (−37% de sobre-brillo) → la presión L1 fuerte SÍ adelgaza el velo translúcido sobre-brillante. <b>Pero NO es victoria limpia:</b> al vaciar esa masa pierde detalle fino → <b>LPIPS +0.0135 (0.339→0.353) y SSIM −0.0015</b> vs run16. Es un <b>trade-off PSNR↔perceptual</b>. vs el ORIGINAL run32 lo domina mejor que run16 (sigue ganando SSIM 0.594&gt;0.556 y LPIPS 0.353&lt;0.402, y casi empata el PSNR que era la única pérdida). <b>Si la prioridad es cerrar el PSNR, run32 es el mejor candidato; si la tesis es lo perceptual (LPIPS/SSIM), run16 sigue siendo el techo.</b></li>
+      <li><b>VEREDICTO (revisado tras run32):</b> el velo/fondo sigue siendo un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence) — ningún sweep lo <i>elimina</i>. PERO el cheap-sweep <b>no estaba del todo agotado</b>: <code>opacity_reg</code> a 5× (run32) es el primer dial que <b>adelgaza</b> el velo y <b>recupera PSNR</b> (a costa de LPIPS). <code>dead_sustain 5</code> (run16) sigue siendo el óptimo del gate. Mapa de decisión: <b>(A)</b> aceptar run16 (mejor perceptual) o run32 (mejor PSNR / domina mejor al original) como techo del 2D · <b>(B)</b> migrar a gsplat/3D (arreglo estructural real) · <b>(C)</b> tocar el clamp de escala del rasterizer (baja prob). Posible exploración barata pendiente: barrer <code>opacity_reg</code> entre 0.03 y 0.07 para localizar el punto óptimo del trade-off.</li>
     </ul>
   </div>
 
