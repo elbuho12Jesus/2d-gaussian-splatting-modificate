@@ -182,6 +182,34 @@
         <td>7.5 M</td><td>—</td><td>7.5 M</td>
         <td class="l"><b>SWEEP <code>opacity_reg</code>: 0.07 (ENDPOINT)</b> (base run16 EXACTO). <span class="bad">PSNR se da la vuelta</span>: 21.00 (run36 21.16, <b>−0.16</b>) → <b>confirma que 0.06 es el óptimo de PSNR</b>: la curva pasó el pico y cae (la L1 fuerte empieza a vaciar el fondo, riesgo que avisaba run20). <b>Estrictamente peor que run36 en las 3</b> (PSNR −0.16, SSIM −0.0071, LPIPS +0.0080). Cierra el barrido: <b>LPIPS degrada monótono en todo el dial</b> (0.339→0.3635) y <b>SSIM cae monótono desde su pico en 0.03</b>. Todavía gana al original en las 3 pero run36 lo domina mejor → no aporta nada nuevo salvo cerrar el endpoint.</td>
       </tr>
+      <tr>
+        <td class="l run">run38</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>SWEEP <code>scale_reg</code>: 0.02</b> (base <b>run36</b> EXACTO: <code>opacity_reg</code>=0.06, todo lo demás run16). <span class="bad">No supera al ancla run36</span>: 21.115 / 0.5916 / 0.3555 (run36 21.157 / 0.5926 / 0.3555) → PSNR −0.04, SSIM −0.0010, LPIPS igual. Apretar la escala no aporta sobre el velo ya adelgazado por <code>opacity_reg</code>=0.06.</td>
+      </tr>
+      <tr>
+        <td class="l run">run39</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>SWEEP <code>scale_reg</code>: 0.03</b> (base run36 EXACTO). <span class="bad">Valle de PSNR</span>: 20.727 / 0.5908 / 0.3558 → PSNR −0.43 vs run36, peor SSIM, LPIPS plano. Curva de <code>scale_reg</code> <b>no-monótona</b> (cae aquí y recupera parcial en 0.05) pero sin pico que mejore el ancla.</td>
+      </tr>
+      <tr>
+        <td class="l run">run40</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>SWEEP <code>scale_reg</code>: 0.05</b> (base run36 EXACTO). 21.063 / 0.5913 / <b>0.3544</b>. Recuperación parcial de PSNR (vs valle 0.03) pero <b>aún por debajo de run36</b> (−0.09). LPIPS 0.3544 = leve mejor que run36 (−0.0011, <b>dentro del ruido</b>). No bate al ancla en ninguna métrica de forma significativa.</td>
+      </tr>
+      <tr>
+        <td class="l run">run41</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M</td><td>—</td><td>7.5 M</td>
+        <td class="l"><b>SWEEP <code>scale_reg</code>: 0.10 (ENDPOINT)</b> (base run36 EXACTO). <span class="bad">Peor de la tanda</span>: 20.696 / 0.5852 / 0.3604 → cae en las 3 (PSNR −0.46, SSIM −0.0074, LPIPS +0.0049). Cierra el barrido. <b>VEREDICTO sweep <code>scale_reg</code>: FALLA — ningún valor supera al ancla run36 (0.01).</b> SSIM monótono a la baja; los 5 plys topados <b>exactos en 7.5M</b> y <code>extent</code>=4.816 clavado → el clamp del rasterizer sigue topando los gigantes del fondo (mecanismo run21). Confirmado también sobre la base run36 (velo ya fino): <code>scale_reg</code> no complementa la presión L1. <b>Dial descartado.</b></td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -296,6 +324,26 @@
         <td>21.00</td><td>0.586</td><td>0.363</td>
         <td>—</td><td>—</td><td>—</td>
       </tr>
+      <tr>
+        <td class="l run">run38 <span class="tag tMCMC">MCMC</span></td>
+        <td>21.12</td><td>0.592</td><td>0.356</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td class="l run">run39 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.73</td><td>0.591</td><td>0.356</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td class="l run">run40 <span class="tag tMCMC">MCMC</span></td>
+        <td>21.06</td><td>0.591</td><td>0.354</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
+      <tr>
+        <td class="l run">run41 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.70</td><td>0.585</td><td>0.360</td>
+        <td>—</td><td>—</td><td>—</td>
+      </tr>
     </tbody>
   </table>
   <p class="note">↑ mayor es mejor · ↓ menor es mejor. <b>Baseline 2DGS original</b> (local, mismo flowers): PSNR test 20.92.
@@ -319,6 +367,7 @@
       <li><b>run29 (subir cap 7.5M→9.5M en MCMC, resto = run16):</b> <span class="arrow-dn">cap saturado, sin avance</span>. Ply topado exacto en <b>9.5 M splats</b>. vs run16: <b>PSNR −0.25 (20.21→19.96), SSIM −0.0017, LPIPS −0.0013</b> (esta última mejora es ínfima, dentro del ruido). <b>+2 M primitivas no compran calidad.</b> Confirma el cap saturado por fin en métrica honesta MCMC y en <b>ambas direcciones</b>: 3M peor (run17), 7.5M mejor (run16), 9.5M plano (run29). Coherente con run8 (9M in-train, "solo sube train"): las primitivas extra memorizan el train, no arreglan el fondo. <b>El velo translúcido del fondo es estructural del surfel 2D, no un problema de número de primitivas → cap descartado definitivamente como palanca.</b></li>
       <li><b>run32 (<code>opacity_reg</code> 0.01→0.05, 5×, base run16):</b> <span class="arrow-up">PRIMERA palanca que SUBE PSNR</span> — honesto <b>20.62 / 0.594 / 0.353</b>. <b>Mejor PSNR de toda la familia MCMC</b> (run16 20.21, <b>+0.41 dB</b>), y <b>cierra casi todo el gap con el original</b> (20.89): de −0.69 (run16) a <b>−0.27 dB</b>. Reabre lo que run20 había cerrado mal: el 2× (0.02) cayó en un valle (19.54), pero el 5× saltó a otro régimen → <b>la curva de <code>opacity_reg</code> NO es monótona</b>, run20 solo se quedó corto. <b>Mecanismo confirmado por diagnóstico de brillo:</b> dmean(render−gt) cae de <b>+0.999 (run16) a +0.627 (run32)</b> (−37% de sobre-brillo) → la presión L1 fuerte SÍ adelgaza el velo translúcido sobre-brillante. <b>Pero NO es victoria limpia:</b> al vaciar esa masa pierde detalle fino → <b>LPIPS +0.0135 (0.339→0.353) y SSIM −0.0015</b> vs run16. Es un <b>trade-off PSNR↔perceptual</b>. vs el ORIGINAL run32 lo domina mejor que run16 (sigue ganando SSIM 0.594&gt;0.556 y LPIPS 0.353&lt;0.402, y casi empata el PSNR que era la única pérdida). <b>Si la prioridad es cerrar el PSNR, run32 es el mejor candidato; si la tesis es lo perceptual (LPIPS/SSIM), run16 sigue siendo el techo.</b></li>
       <li><b>SWEEP <code>opacity_reg</code> 0.03–0.06 (run33/34/36, base run16):</b> <span class="arrow-up">completa la curva que abrió run32 y produce el HITO del proyecto</span>. Curva PSNR (honesta, COMPLETA): 0.01=20.21 · 0.02=19.54 (valle aislado) · 0.03=<b>20.53</b> · 0.04=<b>20.80</b> · 0.05=20.62 · 0.06=<b>21.16</b> (pico) · 0.07=21.00 (<b>cae</b>). <b>Tres lecturas firmes:</b> (1) <b>PSNR tiene un MÁXIMO INTERIOR en 0.06</b> — sube de 0.03 a 0.06 y se da la vuelta en 0.07 (run37 −0.16); el valle de run20 (0.02) era un punto aislado, no la dirección. <code>opacity_reg</code> es la palanca que recupera PSNR <i>hasta</i> 0.06; más allá, la L1 empieza a vaciar el fondo (riesgo que avisaba run20). (2) <b>LPIPS empeora MONÓTONO en todo el dial</b> (0.339→0.343→0.346→0.353→0.356→0.363) y <b>SSIM cae monótono desde su pico en 0.03</b> → vaciar más velo = más PSNR (hasta el pico) pero menos detalle fino siempre. (3) <b>El dial está AGOTADO:</b> óptimo localizado, run37 no aporta nada nuevo (estrictamente peor que run36 en las 3). <b>run33 (0.03)</b> = <b>Pareto interno</b>: mejor SSIM del historial (0.6007) + PSNR +0.32 con LPIPS casi intacto. <b>run36 (0.06)</b> = <b>HITO + óptimo de PSNR</b>: <b>primera run que DOMINA al original 2DGS en las TRES métricas honestas</b> (21.16/0.5926/0.3555 vs 20.89/0.556/0.402) — cierra el objetivo del proyecto ("superar baseline"). Los 5 plys del barrido topados exactos en 7.5M → el dial mueve calidad sin tocar nº de primitivas.</li>
+      <li><b>SWEEP <code>scale_reg</code> 0.02–0.10 (run38/39/40/41, base run36, <code>opacity_reg</code>=0.06 fijo):</b> <span class="arrow-dn">FALLA — ningún valor supera al ancla run36 (0.01)</span>. Curva PSNR (honesta): 0.01=<b>21.16</b> (run36, ancla) · 0.02=21.12 (run38) · 0.03=20.73 (run39, valle) · 0.05=21.06 (run40) · 0.10=20.70 (run41). <b>Re-barrido motivado:</b> con el velo ya adelgazado por <code>opacity_reg</code>=0.06 (base run36), la pregunta era si <code>scale_reg</code> rendía DISTINTO que sobre la base vieja (run21/run22). <b>Respuesta: NO.</b> Tres lecturas: (1) <b>el ancla gana en PSNR</b> — subir <code>scale_reg</code> solo baja PSNR, con la misma curva no-monótona (valle en 0.03, recuperación parcial en 0.05, caída en 0.10) pero <b>sin pico interior que mejore el ancla</b>. (2) <b>SSIM monótono a la baja</b> desde el ancla (0.5926→0.5852); LPIPS plano (único matiz: run40/0.05 da 0.3544 vs 0.3555, −0.0011 = <b>dentro del ruido</b>). (3) <b>Mecanismo run21 CONFIRMADO también sobre la base run36:</b> los 5 plys topados <b>exactos en 7.5M</b> y <code>extent</code>=4.816 clavado en todos los logs → el clamp del rasterizer sigue topando los gigantes del fondo; <code>scale_reg</code> muerde el primer plano (op(mean) 0.051→0.057, %activos 74.15→70.83 al apretar) pero <b>no complementa la presión L1 de opacidad</b>. <b>Dial <code>scale_reg</code> descartado de forma definitiva</b> (antes solo sobre la base vieja; ahora también sobre run36). Enésimo cheap-sweep fallido — el muro estructural del surfel 2D es el clamp de escala.</li>
       <li><b>VEREDICTO (revisado tras el sweep run33/34/36):</b> el velo/fondo sigue siendo un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence) — ningún sweep lo <i>elimina</i>. PERO <code>opacity_reg</code> ↑ <b>adelgaza</b> el velo y <b>recupera PSNR</b>, y con <b>run36 (0.06) el repo DOMINA al original en las tres métricas honestas</b> → el "superar baseline" del objetivo está cumplido. Quedan <b>tres techos según prioridad</b>: <b>run16</b> (0.01) = mejor LPIPS (la tesis perceptual) · <b>run33</b> (0.03) = mejor SSIM y Pareto equilibrado · <b>run36</b> (0.06) = mejor PSNR y único que gana al original en todo. <code>dead_sustain 5</code> sigue siendo el óptimo del gate. <b>Sweep <code>opacity_reg</code> CERRADO</b> (run37/0.07 confirmó el pico en 0.06 → PSNR se da la vuelta). Mapa de decisión: <b>(A)</b> fijar run36 o run33 como entrega según métrica objetivo · <b>(B)</b> migrar a gsplat/3D (arreglo estructural real del fondo) · <b>(C)</b> clamp del rasterizer (baja prob). Cheap-sweep AGOTADO de nuevo (ahora con el dial <code>opacity_reg</code> ya mapeado de punta a punta).</li>
     </ul>
   </div>
