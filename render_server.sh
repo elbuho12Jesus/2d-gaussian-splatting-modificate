@@ -3,7 +3,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Deben coincidir con train_server.sh.
 DATASET=bonsai           # carpeta en Datasets/
-RUN=43                    # número de run  (réplica de run36/opacity_reg=0.06 sobre bonsai, cap OFICIAL 1.5M)
+RUN=44                    # número de run  (= run43 salvo opacity_reg 0.06→0.01; aísla op_reg en bonsai, cap 1.5M)
 ITER=30000               # iteración (checkpoint) a renderizar (el test pica ~30k)
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}

@@ -372,6 +372,60 @@
     </ul>
   </div>
 
+  <h2>3·bis · BONSAI (salto de dataset — escena INTERIOR ACOTADA)</h2>
+  <div class="card note">
+    Primer dataset distinto a flowers. <b>flowers = exterior NO acotada</b> (su problema es el velo translúcido del
+    fondo rasante); <b>bonsai = interior ACOTADA</b> (sin fondo rasante). Toda la tabla anterior (cap 7.5M,
+    <code>extent</code>=4.816, baseline 20.92) es de flowers y <b>no aplica aquí</b>. Métricas honestas con el
+    MISMO <code>metrics.py</code> (37 vistas, iter 30000, <code>--eval</code>), medidas 2026-06-30.
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Modelo</th><th>Densif.</th><th>cap_max</th><th>Splats finales</th>
+        <th>PSNR ↑</th><th>SSIM ↑</th><th>LPIPS ↓</th><th class="l">Nota</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:rgba(63,185,80,.08)">
+        <td class="l run">Original 2DGS</td>
+        <td><span class="tag tCLA">CLA</span></td>
+        <td>—</td><td>798 K</td>
+        <td class="best">31.36</td><td class="best">0.9359</td><td class="best">0.2042</td>
+        <td class="l"><b>Baseline honesto de bonsai.</b> Converge solo a 798K splats con densificación clásica. <b>GANA en las tres métricas</b> a todos nuestros runs de bonsai hasta ahora.</td>
+      </tr>
+      <tr>
+        <td class="l run">run42 <span class="tag tMCMC">MCMC</span></td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>4.5 M</td><td>4.5 M</td>
+        <td class="worst">27.54</td><td class="worst">0.9120</td><td>0.2131</td>
+        <td class="l">Réplica de run36 (config HITO de flowers: <code>opacity_reg</code>=0.06, gate 5, ruido run9) sobre bonsai con <b>cap 4.5M = 3× el oficial (1.5M)</b>. <span class="bad">PIERDE en las 3 vs original</span> (−3.82 dB PSNR) pese a <b>5.6× más splats</b>. <b>Sobre-densificación brutal</b> en escena acotada = velo translúcido amplificado. La receta ganadora de flowers <b>NO generaliza tal cual</b>.</td>
+      </tr>
+      <tr>
+        <td class="l run">run43 <span class="tag tMCMC">MCMC</span></td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>1.5 M</td><td>1.5 M</td>
+        <td>28.38</td><td>0.9151</td><td class="worst">0.2191</td>
+        <td class="l"><b>= run42 salvo cap 4.5M → 1.5M (oficial).</b> <span class="arrow-up">PSNR +0.84, SSIM +0.0031</span> vs run42 → <b>confirma que la sobre-densificación dañaba</b>. <span class="arrow-dn">Pero LPIPS EMPEORÓ +0.006</span> (peor de los tres). Sigue topado <b>exacto en 1.5M</b> (el original usa solo 798K → el MCMC gasta todo el presupuesto igual) y a <b>−2.98 dB del original</b>. Bajar el cap recuperó &lt;1 dB de los ~3.8 que faltaban.</td>
+      </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run44 <span class="tag tMCMC">MCMC</span></td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>1.5 M</td><td>—</td>
+        <td>—</td><td>—</td><td>—</td>
+        <td class="l"><b>= run43 salvo <code>opacity_reg</code> 0.06 → 0.01 (base run16).</b> Aísla el dial. Hipótesis: en bonsai <code>opacity_reg</code>=0.06 <b>estorba</b> (no hay fondo rasante que limpiar → solo quita opacidad/detalle útil; coherente con el LPIPS = peor de los tres en run43). Esperado: volver a 0.01 sube las 3 (sobre todo LPIPS). <i>Pendiente de medir.</i></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="card">
+    <ul>
+      <li><b>El original 2DGS DOMINA en bonsai</b> (31.36/0.9359/0.2042) — lo opuesto a flowers, donde el MCMC le ganaba SSIM/LPIPS. En interior acotada el clásico converge limpio a 798K y nos saca ~3 dB.</li>
+      <li><b>El cap SÍ era palanca en bonsai</b> (al revés que en flowers, donde estaba saturado): 4.5M→1.5M dio +0.84 dB PSNR. La sobre-densificación del MCMC hace daño real en escena acotada.</li>
+      <li><b>Pero el cap no cierra el gap</b>: run43 sigue −2.98 dB y topa exacto en 1.5M (vs 798K del original). El MCMC gasta todo el presupuesto aunque la escena no lo pida.</li>
+      <li><b>opacity_reg 0.06 (heredado de flowers) probablemente estorba aquí</b>: empeoró el LPIPS. En flowers adelgazaba el velo del fondo rasante; bonsai no tiene ese fondo → run44 lo aísla.</li>
+    </ul>
+  </div>
+
   <h2>4 · Parámetros fijos (comunes a todos los runs)</h2>
   <div class="card note">
     <code>--eval</code> · SH grado 3 · <code>iterations 30000</code> · <code>lambda_normal 0.05</code> ·
