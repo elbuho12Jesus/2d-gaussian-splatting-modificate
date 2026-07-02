@@ -391,8 +391,8 @@
         <td class="l run">Original 2DGS</td>
         <td><span class="tag tCLA">CLA</span></td>
         <td>—</td><td>798 K</td>
-        <td class="best">31.36</td><td class="best">0.9359</td><td class="best">0.2042</td>
-        <td class="l"><b>Baseline honesto de bonsai.</b> Converge solo a 798K splats con densificación clásica. <b>GANA en las tres métricas</b> a todos nuestros runs de bonsai hasta ahora.</td>
+        <td class="best">31.36</td><td>0.9359</td><td>0.2042</td>
+        <td class="l"><b>Baseline honesto de bonsai.</b> Converge solo a 798K splats con densificación clásica. <b>Ganaba en las tres métricas</b> hasta run44 — <b>run44 le arrebata SSIM y LPIPS</b>; el original solo conserva el mejor PSNR (+0.69 dB).</td>
       </tr>
       <tr>
         <td class="l run">run42 <span class="tag tMCMC">MCMC</span></td>
@@ -411,18 +411,18 @@
       <tr style="background:rgba(110,168,254,.06)">
         <td class="l run">run44 <span class="tag tMCMC">MCMC</span></td>
         <td><span class="tag tMCMC">MCMC</span></td>
-        <td>1.5 M</td><td>—</td>
-        <td>—</td><td>—</td><td>—</td>
-        <td class="l"><b>= run43 salvo <code>opacity_reg</code> 0.06 → 0.01 (base run16).</b> Aísla el dial. Hipótesis: en bonsai <code>opacity_reg</code>=0.06 <b>estorba</b> (no hay fondo rasante que limpiar → solo quita opacidad/detalle útil; coherente con el LPIPS = peor de los tres en run43). Esperado: volver a 0.01 sube las 3 (sobre todo LPIPS). <i>Pendiente de medir.</i></td>
+        <td>1.5 M</td><td>1.5 M</td>
+        <td>30.67</td><td class="best">0.9404</td><td class="best">0.1862</td>
+        <td class="l"><b>= run43 salvo <code>opacity_reg</code> 0.06 → 0.01 (base run16).</b> <span class="arrow-up">SUBE en las 3 vs run43: PSNR +2.29, SSIM +0.0253, LPIPS −0.0329</span> → <b>hipótesis CONFIRMADA</b>: en bonsai el <code>opacity_reg</code>=0.06 heredado de flowers <b>estorbaba</b> (no hay fondo rasante que limpiar → la presión L1 solo vaciaba detalle útil). <b>Da la vuelta a la tanda</b>: run42/43 perdían las 3 vs original; <b>run44 GANA SSIM (+0.0045) y LPIPS (−0.0180) al original</b>, pierde solo PSNR (−0.69 dB) → <b>MISMO patrón que flowers/run16</b>. El dial <code>opacity_reg</code> <b>NO es transferible entre escenas</b>: su óptimo depende de si hay fondo rasante. Topado exacto en 1.5M.</td>
       </tr>
     </tbody>
   </table>
   <div class="card">
     <ul>
-      <li><b>El original 2DGS DOMINA en bonsai</b> (31.36/0.9359/0.2042) — lo opuesto a flowers, donde el MCMC le ganaba SSIM/LPIPS. En interior acotada el clásico converge limpio a 798K y nos saca ~3 dB.</li>
-      <li><b>El cap SÍ era palanca en bonsai</b> (al revés que en flowers, donde estaba saturado): 4.5M→1.5M dio +0.84 dB PSNR. La sobre-densificación del MCMC hace daño real en escena acotada.</li>
-      <li><b>Pero el cap no cierra el gap</b>: run43 sigue −2.98 dB y topa exacto en 1.5M (vs 798K del original). El MCMC gasta todo el presupuesto aunque la escena no lo pida.</li>
-      <li><b>opacity_reg 0.06 (heredado de flowers) probablemente estorba aquí</b>: empeoró el LPIPS. En flowers adelgazaba el velo del fondo rasante; bonsai no tiene ese fondo → run44 lo aísla.</li>
+      <li><b>run44 (30.67/0.9404/0.1862) SUPERA al original en SSIM y LPIPS</b>, pierde solo PSNR (−0.69 dB) — <b>mismo patrón que flowers/run16</b>. El original DOMINABA las 3 hasta run44; ahora solo conserva el PSNR. En perceptual (SSIM/LPIPS) el MCMC vuelve a ganar también en interior acotada.</li>
+      <li><b>El dial <code>opacity_reg</code> NO es transferible entre escenas.</b> El 0.06 óptimo en flowers (adelgaza el velo del fondo rasante) <b>estorba en bonsai</b> (sin fondo rasante → solo vacía detalle): 0.06→0.01 subió las 3 métricas de golpe (run43→run44: +2.29 dB / +0.0253 / −0.0329). Su óptimo depende de la escena.</li>
+      <li><b>El cap SÍ era palanca en bonsai</b> (al revés que en flowers, saturado): 4.5M→1.5M dio +0.84 dB PSNR (run42→run43). La sobre-densificación del MCMC daña en escena acotada. Los tres runs de 1.5M topan exacto (vs 798K del original) → el MCMC gasta todo el presupuesto aunque la escena no lo pida.</li>
+      <li><b>El gap real era el dial, no el cap:</b> bajar el cap recuperó &lt;1 dB; el <code>opacity_reg</code> correcto recuperó los ~2 dB restantes de golpe y cerró SSIM/LPIPS. run44 es el techo de bonsai hasta ahora.</li>
     </ul>
   </div>
 

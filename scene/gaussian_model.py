@@ -738,8 +738,10 @@ class GaussianModel:
         """Crece hasta cap_max copiando splats vivos.
         Con error_weight>0, el muestreo de fuentes se sesga hacia splats de alto
         error de reconstrucción para sembrar nuevos splats cerca de zonas mal resueltas.
-        Con jitter_scale>0, los clones se desplazan en una dirección 3D aleatoria
-        con magnitud ∝ scale_src × jitter_scale × err_src — así un src en el BORDE
+        Con jitter_scale>0, los clones se desplazan a lo largo del eje in-plane
+        DOMINANTE del surfel (marco propio, como densify_and_split), signo ±
+        aleatorio, con magnitud ∝ escala_dominante × jitter_scale × err_src — el clon
+        queda SOBRE el plano del surfel (no se va por la normal) y un src en el BORDE
         de un hueco puede sembrar el INTERIOR del hueco, no solo más borde.
         El jitter solo se aplica si error_weight>0 (necesita la señal de error).
         """
@@ -775,15 +777,24 @@ class GaussianModel:
 
             new_xyz = self._xyz[src_idx].detach().clone()
             if jitter_scale > 0.0 and use_error:
-                # Magnitud: scale del src (norma 2D del surfel = tamaño in-plane en world)
-                # × err_src (∈ [0, clip], media≈1) × jitter_scale (dial del usuario).
-                # Splats de alto error desplazan más, sembrando huecos; splats de
-                # bajo error (foreground bien resuelto) desplazan ~0 → clone normal.
-                src_scale = self.get_scaling[src_idx].norm(dim=-1, keepdim=True)
-                direction = torch.randn_like(new_xyz)
-                direction = direction / direction.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+                # Desplazamiento en el MARCO PROPIO del surfel (como densify_and_split):
+                # a lo largo del eje IN-PLANE DOMINANTE (el de mayor escala), llevado a
+                # mundo con la rotación del src. Así el clon queda SOBRE el plano del
+                # surfel (nunca se va por la normal), a diferencia de la dirección 3D
+                # libre anterior que sacaba clones fuera del plano. Magnitud = escala del
+                # eje dominante × jitter_scale × err_src (alto error desplaza más →
+                # siembra huecos; bajo error → clone casi in situ). Signo ± aleatorio
+                # (split crea los dos hijos ±; aquí cada clon toma un signo al azar).
+                src_scales = self.get_scaling[src_idx]                              # (k, 2)
+                rots = build_rotation(self._rotation[src_idx])                      # (k, 3, 3)
+                dom = (src_scales[:, 0] > src_scales[:, 1]).float().unsqueeze(1)    # eje x si s_x>s_y
+                v1_local = torch.cat([dom, 1.0 - dom, torch.zeros_like(dom)], dim=1)  # eje dom. local (normal=0)
+                v1_world = torch.bmm(rots, v1_local.unsqueeze(-1)).squeeze(-1)      # a mundo (k, 3)
+                dom_scale = torch.max(src_scales, dim=1).values.unsqueeze(1)        # escala del eje dominante
+                sign = torch.randn(new_xyz.shape[0], 1, device=new_xyz.device).sign()
+                sign[sign == 0] = 1.0
                 err_src = err[src_idx].unsqueeze(-1)
-                new_xyz = new_xyz + direction * src_scale * (jitter_scale * err_src)
+                new_xyz = new_xyz + sign * v1_world * dom_scale * (jitter_scale * err_src)
             new_features_dc = self._features_dc[src_idx].detach().clone()
             new_features_rest = self._features_rest[src_idx].detach().clone()
             new_sb_params = self._sb_params[src_idx].detach().clone()
