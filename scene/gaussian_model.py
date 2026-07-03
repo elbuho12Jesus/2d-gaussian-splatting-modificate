@@ -679,7 +679,10 @@ class GaussianModel:
         """MCMC-style relocation (alineado con Beta Splatting oficial).
         Copia splats vivos en los slots muertos. Sin jitter posicional — la
         perturbación viene del paso de ruido posterior en train.py. Aplica la
-        regla de conservación de transmittance: src y dst comparten new_alpha = src/2.
+        regla de conservación de transmittance: si un src se elige 'ratio' veces habrá
+        ratio+1 instancias (copias + original), todas con new_alpha = 1-(1-src_alpha)^(1/(ratio+1))
+        para conservar la transmitancia total (ver bloque de código abajo). NOTA: NO es src/2;
+        esa era la versión vieja, solo correcta si ratio==1.
         Con error_weight>0, el muestreo de fuentes se sesga hacia splats de alto
         error de reconstrucción (no solo alta opacidad) para cubrir zonas mal resueltas.
         """
