@@ -210,6 +210,76 @@
         <td>7.5 M</td><td>—</td><td>7.5 M</td>
         <td class="l"><b>SWEEP <code>scale_reg</code>: 0.10 (ENDPOINT)</b> (base run36 EXACTO). <span class="bad">Peor de la tanda</span>: 20.696 / 0.5852 / 0.3604 → cae en las 3 (PSNR −0.46, SSIM −0.0074, LPIPS +0.0049). Cierra el barrido. <b>VEREDICTO sweep <code>scale_reg</code>: FALLA — ningún valor supera al ancla run36 (0.01).</b> SSIM monótono a la baja; los 5 plys topados <b>exactos en 7.5M</b> y <code>extent</code>=4.816 clavado → el clamp del rasterizer sigue topando los gigantes del fondo (mecanismo run21). Confirmado también sobre la base run36 (velo ya fino): <code>scale_reg</code> no complementa la presión L1. <b>Dial descartado.</b></td>
       </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run45</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>A/B del JITTER IN-PLANE de <code>add_new_gs</code></b> (el clon se desplaza por el eje in-plane dominante del surfel, estilo split, en vez de 3D isótropo). <b>Réplica EXACTA de run16</b> (<code>opacity_reg</code> 0.01, ruido run9) → A/B limpio de la dirección del jitter contra run16. <span class="bad">Empeora las 3 vs run16</span> (20.21/0.597/0.339): 19.837 / 0.5948 / 0.3417 → PSNR −0.37, SSIM −0.0024, LPIPS +0.0027. El in-train prometía (21.46, pico 21.66 @20k) pero <b>se evaporó en el render honesto</b> (~1.6 dB de offset). <b>El jitter in-plane NO es palanca</b> (confirmado también por run46 sobre run36).</td>
+      </tr>
+      <tr>
+        <td class="l run">run46</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>RE-SWEEP <code>scale_reg</code>: 0.01</b> sobre base <b>run36 + jitter IN-PLANE + ruido híbrido</b> (<code>--cov_noise</code>, pad 1.0). <b>ANCLA del sweep = "run36 + jitter in-plane"</b> (test directo del jitter nuevo de <code>add_new_gs</code> vs el HITO run36). 20.955 / 0.5936 / 0.3548 → vs run36 (21.157/0.5926/0.3555): PSNR <b>−0.20</b>, SSIM +0.001, LPIPS −0.0007. <span class="bad">El jitter in-plane NO mejora el HITO run36.</span></td>
+      </tr>
+      <tr>
+        <td class="l run">run47</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>RE-SWEEP <code>scale_reg</code>: 0.02</b> (base run36 + jitter in-plane + <code>cov_noise</code>). 20.952 / 0.5925 / 0.3543 = <span class="bad">≈ ancla run46</span>. No aporta.</td>
+      </tr>
+      <tr>
+        <td class="l run">run48</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>RE-SWEEP <code>scale_reg</code>: 0.03</b> (base run36 + jitter in-plane). 20.851 / 0.5916 / 0.3554. <span class="bad">PSNR cae vs ancla.</span></td>
+      </tr>
+      <tr>
+        <td class="l run">run49</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>RE-SWEEP <code>scale_reg</code>: 0.05</b> (base run36 + jitter in-plane). 20.840 / 0.5931 / <b>0.3532</b>. PSNR &lt; ancla; LPIPS 0.3532 = mejor de la tanda pero <b>dentro del ruido</b>.</td>
+      </tr>
+      <tr>
+        <td class="l run">run50</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>RE-SWEEP <code>scale_reg</code>: 0.10 (ENDPOINT)</b> (base run36 + jitter in-plane). <span class="bad">Peor de la tanda</span>: 20.649 / 0.5881 / 0.3570. <b>VEREDICTO: <code>scale_reg</code> FALLA también con jitter in-plane</b> (7º fallo del dial, ninguno supera run36).</td>
+      </tr>
+      <tr>
+        <td class="l run">run51</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>SWEEP <code>cov_noise_normal</code>: 0.0</b> (ruido MCMC <b>100% en el plano</b> del surfel) sobre base run36 + jitter in-plane. 20.972 / 0.5930 / 0.3550 ≈ ancla → confinar el ruido al plano <span class="bad">no adelgaza más el velo</span>.</td>
+      </tr>
+      <tr>
+        <td class="l run">run52</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>SWEEP <code>cov_noise_normal</code>: 0.2</b> (casi confinado al plano) sobre base run36 + jitter in-plane. <b>21.007</b> / 0.5935 / 0.3545 = <b>mejor PSNR de los sweeps jitter/cov</b> y óptimo del dial, pero <span class="bad">aún &lt; run36 (21.157)</span>.</td>
+      </tr>
+      <tr>
+        <td class="l run">run53</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>SWEEP <code>cov_noise_normal</code>: 0.5</b> (media componente normal) sobre base run36 + jitter in-plane. 20.823 / 0.5916 / 0.3570. <span class="bad">PSNR cae vs pad 0.2.</span></td>
+      </tr>
+      <tr>
+        <td class="l run">run54</td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>gate 5 (run16)</td>
+        <td>7.5 M <span class="note">(saturó)</span></td><td>OFF (1e9)</td><td>7.50 M</td>
+        <td class="l"><b>SWEEP <code>cov_noise_normal</code>: 1.0 (ruido 3D, ANCLA)</b> sobre base run36 + jitter in-plane (config ≡ run46). 20.787 / 0.5916 / 0.3567. <b>VEREDICTO: <code>cov_noise_normal</code> DESCARTADO</b> — ningún valor supera run36; pad 0.2 &gt; pad 1.0 pero sigue &lt; run36. La dirección del ruido MCMC no es palanca del velo.</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -262,12 +332,12 @@
       <tr>
         <td class="l run">run21 <span class="tag tMCMC">MCMC</span></td>
         <td>19.63</td><td>0.592</td><td>0.344</td>
-        <td>21.55</td><td>—</td><td>—</td>
+        <td>21.55</td><td>25.17</td><td>3.62</td>
       </tr>
       <tr>
         <td class="l run">run22 <span class="tag tMCMC">MCMC</span></td>
         <td class="worst">19.35</td><td>0.591</td><td>0.343</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.43</td><td>25.40</td><td>3.97</td>
       </tr>
       <tr>
         <td class="l run">run25 <span class="tag tCLA">CLA</span></td>
@@ -287,67 +357,117 @@
       <tr style="background:rgba(110,168,254,.06)">
         <td class="l run">run28 <span class="tag tMCMC">MCMC</span></td>
         <td>19.94</td><td>0.596</td><td>0.340</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.59</td><td>25.23</td><td>3.65</td>
       </tr>
       <tr style="background:rgba(110,168,254,.06)">
         <td class="l run">run29 <span class="tag tMCMC">MCMC</span></td>
         <td>19.96</td><td>0.596</td><td>0.338</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.53</td><td>25.45</td><td>3.92</td>
       </tr>
       <tr style="background:rgba(110,168,254,.06)">
         <td class="l run">run30 <span class="tag tMCMC">MCMC</span></td>
         <td>19.65</td><td>0.594</td><td>0.343</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.50</td><td>25.14</td><td>3.65</td>
       </tr>
       <tr style="background:rgba(63,185,80,.08)">
         <td class="l run">run32 <span class="tag tMCMC">MCMC</span></td>
         <td>20.62</td><td>0.594</td><td>0.353</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.31</td><td>23.80</td><td>2.50</td>
       </tr>
       <tr style="background:rgba(63,185,80,.08)">
         <td class="l run">run33 <span class="tag tMCMC">MCMC</span></td>
         <td>20.53</td><td class="best">0.601</td><td>0.343</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.42</td><td>24.45</td><td>3.03</td>
       </tr>
       <tr style="background:rgba(63,185,80,.08)">
         <td class="l run">run34 <span class="tag tMCMC">MCMC</span></td>
         <td>20.80</td><td>0.600</td><td>0.346</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.37</td><td>24.11</td><td>2.75</td>
       </tr>
       <tr style="background:rgba(63,185,80,.08)">
         <td class="l run">run36 <span class="tag tMCMC">MCMC</span></td>
         <td class="best">21.16</td><td>0.593</td><td>0.356</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.34</td><td>23.55</td><td>2.21</td>
       </tr>
       <tr>
         <td class="l run">run37 <span class="tag tMCMC">MCMC</span></td>
         <td>21.00</td><td>0.586</td><td>0.363</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.19</td><td>23.33</td><td>2.15</td>
       </tr>
       <tr>
         <td class="l run">run38 <span class="tag tMCMC">MCMC</span></td>
         <td>21.12</td><td>0.592</td><td>0.356</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.35</td><td>23.57</td><td>2.22</td>
       </tr>
       <tr>
         <td class="l run">run39 <span class="tag tMCMC">MCMC</span></td>
         <td>20.73</td><td>0.591</td><td>0.356</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.29</td><td>23.59</td><td>2.30</td>
       </tr>
       <tr>
         <td class="l run">run40 <span class="tag tMCMC">MCMC</span></td>
         <td>21.06</td><td>0.591</td><td>0.354</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.28</td><td>23.60</td><td>2.33</td>
       </tr>
       <tr>
         <td class="l run">run41 <span class="tag tMCMC">MCMC</span></td>
         <td>20.70</td><td>0.585</td><td>0.360</td>
-        <td>—</td><td>—</td><td>—</td>
+        <td>21.31</td><td>23.54</td><td>2.24</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run45 <span class="tag tMCMC">MCMC</span></td>
+        <td>19.84</td><td>0.595</td><td>0.342</td>
+        <td>21.46</td><td>25.14</td><td>3.68</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run46 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.96</td><td>0.594</td><td>0.355</td>
+        <td>21.26</td><td>23.58</td><td>2.32</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run47 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.95</td><td>0.593</td><td>0.354</td>
+        <td>21.24</td><td>23.49</td><td>2.25</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run48 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.85</td><td>0.592</td><td>0.355</td>
+        <td>21.18</td><td>23.60</td><td>2.42</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run49 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.84</td><td>0.593</td><td>0.353</td>
+        <td>21.24</td><td>23.57</td><td>2.34</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run50 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.65</td><td>0.588</td><td>0.357</td>
+        <td>21.14</td><td>23.49</td><td>2.35</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run51 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.97</td><td>0.593</td><td>0.355</td>
+        <td>21.25</td><td>23.64</td><td>2.39</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run52 <span class="tag tMCMC">MCMC</span></td>
+        <td>21.01</td><td>0.594</td><td>0.355</td>
+        <td>21.29</td><td>23.66</td><td>2.37</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run53 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.82</td><td>0.592</td><td>0.357</td>
+        <td>21.17</td><td>23.55</td><td>2.38</td>
+      </tr>
+      <tr style="background:rgba(224,175,104,.06)">
+        <td class="l run">run54 <span class="tag tMCMC">MCMC</span></td>
+        <td>20.79</td><td>0.592</td><td>0.357</td>
+        <td>21.14</td><td>23.55</td><td>2.40</td>
       </tr>
     </tbody>
   </table>
-  <p class="note">↑ mayor es mejor · ↓ menor es mejor. <b>Baseline 2DGS original</b> (local, mismo flowers): PSNR test 20.92.
-  Nota: <code>metrics.py</code> mide ~1.4 dB por debajo del eval in-train en ambas rutas (resize del pipeline de render); comparar siempre honesto-vs-honesto.</p>
+  <p class="note">↑ mayor es mejor · ↓ menor es mejor. Las 3 primeras columnas = <code>metrics.py</code> (honesto, held-out). Las 3 últimas = <b>eval in-train de <code>train.py</code> @30k</b> = <b>la métrica que reportan los papers</b> (2DGS, MipNeRF360, etc.: PSNR sobre el split de test evaluado dentro del entrenamiento, sin el resize del pipeline de render). <b>PSNR in-train</b> = test @30k del eval interno · <b>train @30k</b> = PSNR sobre el split de train · <b>gap</b> = train − test (mayor gap = más sobreajuste).</p>
+  <p class="note"><b>Baseline 2DGS original</b> (mismo flowers): PSNR test honesto 20.89 · <b>PSNR in-train 20.92</b> (offset in-train→honesto solo −0.03 dB, robusto). En <b>métrica de paper (in-train)</b> el original marca <b>20.92</b> → <b>run16 (21.60), run28 (21.59), run21 (21.55), run19/29 (21.5) y casi toda la familia MCMC lo SUPERAN por +0.5–0.7 dB</b>. OJO: nuestro offset in-train→honesto es ~1.4 dB (vs −0.03 del original) → parte de esa ventaja in-train se evapora en el render honesto. <b>Comparar siempre en la MISMA ruta</b> (paper-vs-paper o honesto-vs-honesto): en paper-vs-paper ganamos PSNR de sobra; en honesto-vs-honesto el original gana PSNR salvo run36 (que lo bate también honesto).</p>
 
   <h2>3 · Lecturas</h2>
   <div class="card">
@@ -368,6 +488,7 @@
       <li><b>run32 (<code>opacity_reg</code> 0.01→0.05, 5×, base run16):</b> <span class="arrow-up">PRIMERA palanca que SUBE PSNR</span> — honesto <b>20.62 / 0.594 / 0.353</b>. <b>Mejor PSNR de toda la familia MCMC</b> (run16 20.21, <b>+0.41 dB</b>), y <b>cierra casi todo el gap con el original</b> (20.89): de −0.69 (run16) a <b>−0.27 dB</b>. Reabre lo que run20 había cerrado mal: el 2× (0.02) cayó en un valle (19.54), pero el 5× saltó a otro régimen → <b>la curva de <code>opacity_reg</code> NO es monótona</b>, run20 solo se quedó corto. <b>Mecanismo confirmado por diagnóstico de brillo:</b> dmean(render−gt) cae de <b>+0.999 (run16) a +0.627 (run32)</b> (−37% de sobre-brillo) → la presión L1 fuerte SÍ adelgaza el velo translúcido sobre-brillante. <b>Pero NO es victoria limpia:</b> al vaciar esa masa pierde detalle fino → <b>LPIPS +0.0135 (0.339→0.353) y SSIM −0.0015</b> vs run16. Es un <b>trade-off PSNR↔perceptual</b>. vs el ORIGINAL run32 lo domina mejor que run16 (sigue ganando SSIM 0.594&gt;0.556 y LPIPS 0.353&lt;0.402, y casi empata el PSNR que era la única pérdida). <b>Si la prioridad es cerrar el PSNR, run32 es el mejor candidato; si la tesis es lo perceptual (LPIPS/SSIM), run16 sigue siendo el techo.</b></li>
       <li><b>SWEEP <code>opacity_reg</code> 0.03–0.06 (run33/34/36, base run16):</b> <span class="arrow-up">completa la curva que abrió run32 y produce el HITO del proyecto</span>. Curva PSNR (honesta, COMPLETA): 0.01=20.21 · 0.02=19.54 (valle aislado) · 0.03=<b>20.53</b> · 0.04=<b>20.80</b> · 0.05=20.62 · 0.06=<b>21.16</b> (pico) · 0.07=21.00 (<b>cae</b>). <b>Tres lecturas firmes:</b> (1) <b>PSNR tiene un MÁXIMO INTERIOR en 0.06</b> — sube de 0.03 a 0.06 y se da la vuelta en 0.07 (run37 −0.16); el valle de run20 (0.02) era un punto aislado, no la dirección. <code>opacity_reg</code> es la palanca que recupera PSNR <i>hasta</i> 0.06; más allá, la L1 empieza a vaciar el fondo (riesgo que avisaba run20). (2) <b>LPIPS empeora MONÓTONO en todo el dial</b> (0.339→0.343→0.346→0.353→0.356→0.363) y <b>SSIM cae monótono desde su pico en 0.03</b> → vaciar más velo = más PSNR (hasta el pico) pero menos detalle fino siempre. (3) <b>El dial está AGOTADO:</b> óptimo localizado, run37 no aporta nada nuevo (estrictamente peor que run36 en las 3). <b>run33 (0.03)</b> = <b>Pareto interno</b>: mejor SSIM del historial (0.6007) + PSNR +0.32 con LPIPS casi intacto. <b>run36 (0.06)</b> = <b>HITO + óptimo de PSNR</b>: <b>primera run que DOMINA al original 2DGS en las TRES métricas honestas</b> (21.16/0.5926/0.3555 vs 20.89/0.556/0.402) — cierra el objetivo del proyecto ("superar baseline"). Los 5 plys del barrido topados exactos en 7.5M → el dial mueve calidad sin tocar nº de primitivas.</li>
       <li><b>SWEEP <code>scale_reg</code> 0.02–0.10 (run38/39/40/41, base run36, <code>opacity_reg</code>=0.06 fijo):</b> <span class="arrow-dn">FALLA — ningún valor supera al ancla run36 (0.01)</span>. Curva PSNR (honesta): 0.01=<b>21.16</b> (run36, ancla) · 0.02=21.12 (run38) · 0.03=20.73 (run39, valle) · 0.05=21.06 (run40) · 0.10=20.70 (run41). <b>Re-barrido motivado:</b> con el velo ya adelgazado por <code>opacity_reg</code>=0.06 (base run36), la pregunta era si <code>scale_reg</code> rendía DISTINTO que sobre la base vieja (run21/run22). <b>Respuesta: NO.</b> Tres lecturas: (1) <b>el ancla gana en PSNR</b> — subir <code>scale_reg</code> solo baja PSNR, con la misma curva no-monótona (valle en 0.03, recuperación parcial en 0.05, caída en 0.10) pero <b>sin pico interior que mejore el ancla</b>. (2) <b>SSIM monótono a la baja</b> desde el ancla (0.5926→0.5852); LPIPS plano (único matiz: run40/0.05 da 0.3544 vs 0.3555, −0.0011 = <b>dentro del ruido</b>). (3) <b>Mecanismo run21 CONFIRMADO también sobre la base run36:</b> los 5 plys topados <b>exactos en 7.5M</b> y <code>extent</code>=4.816 clavado en todos los logs → el clamp del rasterizer sigue topando los gigantes del fondo; <code>scale_reg</code> muerde el primer plano (op(mean) 0.051→0.057, %activos 74.15→70.83 al apretar) pero <b>no complementa la presión L1 de opacidad</b>. <b>Dial <code>scale_reg</code> descartado de forma definitiva</b> (antes solo sobre la base vieja; ahora también sobre run36). Enésimo cheap-sweep fallido — el muro estructural del surfel 2D es el clamp de escala.</li>
+      <li><b>RE-SWEEP <code>scale_reg</code> + JITTER IN-PLANE (run46–50) y SWEEP <code>cov_noise_normal</code> (run51–54), base run36 + jitter in-plane de <code>add_new_gs</code> + ruido híbrido (<code>--cov_noise</code>):</b> <span class="arrow-dn">ambos FALLAN — ningún valor supera al ancla run36 (21.157/0.5926/0.3555)</span>. <b>(1) El jitter in-plane no mejora nada:</b> el A/B LIMPIO contra run16 es <b>run45</b> (misma <code>opacity_reg</code> 0.01) = 19.837/0.5948/0.3417 → <b>empeora las 3 vs run16</b> (PSNR −0.37, SSIM −0.0024, LPIPS +0.0027); su in-train prometía (21.46) pero se evaporó en honesto (~1.6 dB). Y el ancla run46 (scale_reg 0.01, sobre run36) = 20.955/0.5936/0.3548 → PSNR −0.20 vs run36. Cambiar la dirección del clon de <code>add_new_gs</code> (3D isótropo → eje in-plane dominante) <b>no toca el velo por ninguna de las dos bases</b>. <b>(2) <code>scale_reg</code> vuelve a fallar</b> también sobre esta base (7º fallo del dial): curva PSNR 0.01=20.96 · 0.02=20.95 · 0.03=20.85 · 0.05=20.84 · 0.10=20.65, monótona a la baja, plys topados exactos en 7.5M. <b>(3) La dirección del ruido MCMC (<code>cov_noise_normal</code>) no es palanca:</b> confinar el ruido al plano (pad 0.0→1.0) da PSNR 20.97/21.01/20.82/20.79 — el mejor punto es pad 0.2 (run52, 21.01) pero <b>sigue por debajo de run36</b>. La hipótesis "los floaters del velo son splats empujados fuera de su plano por la normal del ruido" queda <b>refutada</b>: reducir la componente normal no adelgaza el velo. <b>Confirma de nuevo que el velo es estructural del surfel 2D</b> (clamp de escala), no del jitter ni de la geometría del ruido. Dos dials más descartados.</li>
       <li><b>VEREDICTO (revisado tras el sweep run33/34/36):</b> el velo/fondo sigue siendo un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence) — ningún sweep lo <i>elimina</i>. PERO <code>opacity_reg</code> ↑ <b>adelgaza</b> el velo y <b>recupera PSNR</b>, y con <b>run36 (0.06) el repo DOMINA al original en las tres métricas honestas</b> → el "superar baseline" del objetivo está cumplido. Quedan <b>tres techos según prioridad</b>: <b>run16</b> (0.01) = mejor LPIPS (la tesis perceptual) · <b>run33</b> (0.03) = mejor SSIM y Pareto equilibrado · <b>run36</b> (0.06) = mejor PSNR y único que gana al original en todo. <code>dead_sustain 5</code> sigue siendo el óptimo del gate. <b>Sweep <code>opacity_reg</code> CERRADO</b> (run37/0.07 confirmó el pico en 0.06 → PSNR se da la vuelta). Mapa de decisión: <b>(A)</b> fijar run36 o run33 como entrega según métrica objetivo · <b>(B)</b> migrar a gsplat/3D (arreglo estructural real del fondo) · <b>(C)</b> clamp del rasterizer (baja prob). Cheap-sweep AGOTADO de nuevo (ahora con el dial <code>opacity_reg</code> ya mapeado de punta a punta).</li>
     </ul>
   </div>
@@ -378,12 +499,13 @@
     fondo rasante); <b>bonsai = interior ACOTADA</b> (sin fondo rasante). Toda la tabla anterior (cap 7.5M,
     <code>extent</code>=4.816, baseline 20.92) es de flowers y <b>no aplica aquí</b>. Métricas honestas con el
     MISMO <code>metrics.py</code> (37 vistas, iter 30000, <code>--eval</code>), medidas 2026-06-30.
+    Columna <b>PSNR in-train @30k</b> = métrica de paper (eval interno de <code>train.py</code>). En bonsai el offset in-train→honesto es pequeño (~0.86 dB en run44: 31.53→30.67) y el gap train−test es <b>negativo</b> (vistas de test interpoladas en escena acotada). El in-train del <b>Original 2DGS</b> no está disponible en local (<code>n/d</code>): solo se midió su honesto (31.36).
   </div>
   <table>
     <thead>
       <tr>
         <th class="l">Modelo</th><th>Densif.</th><th>cap_max</th><th>Splats finales</th>
-        <th>PSNR ↑</th><th>SSIM ↑</th><th>LPIPS ↓</th><th class="l">Nota</th>
+        <th>PSNR ↑<br><span class="note">metrics.py</span></th><th>PSNR in-train ↑<br><span class="note">@30k, paper</span></th><th>SSIM ↑</th><th>LPIPS ↓</th><th class="l">Nota</th>
       </tr>
     </thead>
     <tbody>
@@ -391,28 +513,28 @@
         <td class="l run">Original 2DGS</td>
         <td><span class="tag tCLA">CLA</span></td>
         <td>—</td><td>798 K</td>
-        <td class="best">31.36</td><td>0.9359</td><td>0.2042</td>
+        <td class="best">31.36</td><td>n/d</td><td>0.9359</td><td>0.2042</td>
         <td class="l"><b>Baseline honesto de bonsai.</b> Converge solo a 798K splats con densificación clásica. <b>Ganaba en las tres métricas</b> hasta run44 — <b>run44 le arrebata SSIM y LPIPS</b>; el original solo conserva el mejor PSNR (+0.69 dB).</td>
       </tr>
       <tr>
         <td class="l run">run42 <span class="tag tMCMC">MCMC</span></td>
         <td><span class="tag tMCMC">MCMC</span></td>
         <td>4.5 M</td><td>4.5 M</td>
-        <td class="worst">27.54</td><td class="worst">0.9120</td><td>0.2131</td>
+        <td class="worst">27.54</td><td class="worst">29.09</td><td class="worst">0.9120</td><td>0.2131</td>
         <td class="l">Réplica de run36 (config HITO de flowers: <code>opacity_reg</code>=0.06, gate 5, ruido run9) sobre bonsai con <b>cap 4.5M = 3× el oficial (1.5M)</b>. <span class="bad">PIERDE en las 3 vs original</span> (−3.82 dB PSNR) pese a <b>5.6× más splats</b>. <b>Sobre-densificación brutal</b> en escena acotada = velo translúcido amplificado. La receta ganadora de flowers <b>NO generaliza tal cual</b>.</td>
       </tr>
       <tr>
         <td class="l run">run43 <span class="tag tMCMC">MCMC</span></td>
         <td><span class="tag tMCMC">MCMC</span></td>
         <td>1.5 M</td><td>1.5 M</td>
-        <td>28.38</td><td>0.9151</td><td class="worst">0.2191</td>
+        <td>28.38</td><td>29.27</td><td>0.9151</td><td class="worst">0.2191</td>
         <td class="l"><b>= run42 salvo cap 4.5M → 1.5M (oficial).</b> <span class="arrow-up">PSNR +0.84, SSIM +0.0031</span> vs run42 → <b>confirma que la sobre-densificación dañaba</b>. <span class="arrow-dn">Pero LPIPS EMPEORÓ +0.006</span> (peor de los tres). Sigue topado <b>exacto en 1.5M</b> (el original usa solo 798K → el MCMC gasta todo el presupuesto igual) y a <b>−2.98 dB del original</b>. Bajar el cap recuperó &lt;1 dB de los ~3.8 que faltaban.</td>
       </tr>
       <tr style="background:rgba(110,168,254,.06)">
         <td class="l run">run44 <span class="tag tMCMC">MCMC</span></td>
         <td><span class="tag tMCMC">MCMC</span></td>
         <td>1.5 M</td><td>1.5 M</td>
-        <td>30.67</td><td class="best">0.9404</td><td class="best">0.1862</td>
+        <td>30.67</td><td class="best">31.53</td><td class="best">0.9404</td><td class="best">0.1862</td>
         <td class="l"><b>= run43 salvo <code>opacity_reg</code> 0.06 → 0.01 (base run16).</b> <span class="arrow-up">SUBE en las 3 vs run43: PSNR +2.29, SSIM +0.0253, LPIPS −0.0329</span> → <b>hipótesis CONFIRMADA</b>: en bonsai el <code>opacity_reg</code>=0.06 heredado de flowers <b>estorbaba</b> (no hay fondo rasante que limpiar → la presión L1 solo vaciaba detalle útil). <b>Da la vuelta a la tanda</b>: run42/43 perdían las 3 vs original; <b>run44 GANA SSIM (+0.0045) y LPIPS (−0.0180) al original</b>, pierde solo PSNR (−0.69 dB) → <b>MISMO patrón que flowers/run16</b>. El dial <code>opacity_reg</code> <b>NO es transferible entre escenas</b>: su óptimo depende de si hay fondo rasante. Topado exacto en 1.5M.</td>
       </tr>
     </tbody>
