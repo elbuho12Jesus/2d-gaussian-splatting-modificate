@@ -537,6 +537,13 @@
         <td>30.67</td><td class="best">31.53</td><td class="best">0.9404</td><td class="best">0.1862</td>
         <td class="l"><b>= run43 salvo <code>opacity_reg</code> 0.06 → 0.01 (base run16).</b> <span class="arrow-up">SUBE en las 3 vs run43: PSNR +2.29, SSIM +0.0253, LPIPS −0.0329</span> → <b>hipótesis CONFIRMADA</b>: en bonsai el <code>opacity_reg</code>=0.06 heredado de flowers <b>estorbaba</b> (no hay fondo rasante que limpiar → la presión L1 solo vaciaba detalle útil). <b>Da la vuelta a la tanda</b>: run42/43 perdían las 3 vs original; <b>run44 GANA SSIM (+0.0045) y LPIPS (−0.0180) al original</b>, pierde solo PSNR (−0.69 dB) → <b>MISMO patrón que flowers/run16</b>. El dial <code>opacity_reg</code> <b>NO es transferible entre escenas</b>: su óptimo depende de si hay fondo rasante. Topado exacto en 1.5M.</td>
       </tr>
+      <tr>
+        <td class="l run">run55 <span class="tag tMCMC">MCMC</span></td>
+        <td><span class="tag tMCMC">MCMC</span></td>
+        <td>1.5 M</td><td>1.5 M</td>
+        <td>30.23</td><td>31.25</td><td>0.9391</td><td>0.1871</td>
+        <td class="l"><b>"receta run51 arreglada para bonsai": = run44 + los 2 deltas de run51</b> (<code>cov_noise_normal</code>=0.0 → ruido MCMC 100% en el plano del surfel + jitter in-plane, ruido híbrido <code>--cov_noise</code>). <span class="arrow-dn">Empeora las 3 vs run44: PSNR −0.44, SSIM −0.0013, LPIPS +0.0009</span> → <b>HIPÓTESIS NULA CONFIRMADA</b>: en escena <b>acotada</b> (sin velo), confinar el ruido/jitter al plano <b>NO ayuda</b> sobre run44. <b>Coherente con flowers</b> (run51–54 ya refutaron que la dirección del ruido MCMC sea palanca del velo) → la geometría del ruido queda descartada también en interior acotada. <b>run44 sigue siendo el techo de bonsai.</b> Cap topado exacto en 1.5M.</td>
+      </tr>
     </tbody>
   </table>
   <div class="card">
