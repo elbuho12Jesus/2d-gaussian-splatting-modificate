@@ -231,7 +231,37 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		float2 extent;
 		bool ok = compute_aabb(T, cutoff, point_image, extent);
 		if (!ok) return;
-		radius = ceil(max(max(extent.x, extent.y), cutoff * FilterSize));
+
+		// ================= [TEST VELO 2026-07-05] =================
+		// HIPOTESIS: el velo / los "haces de luz" sobre-brillantes del fondo = splats
+		// SUB-PIXEL rescatados por el low-pass. En la version original, el max(...) de abajo
+		// aplica el suelo cutoff*FilterSize: si la huella geometrica real del surfel
+		// (extent, a cutoff*sigma) es menor que ese suelo, el splat se INFLA a ~1px SIN
+		// bajarle la opacidad -> pinta un blob de 1px a opacidad plena. Apilados = velo.
+		//
+		// TEST: en vez de rescatarlos, los CULLEAMOS (dejan de existir en el render).
+		// La condicion extent < cutoff*FilterSize equivale a sigma_pantalla < FilterSize
+		// (=0.707px) -> genuinamente sub-pixel. Si el haz de luz DESAPARECE al re-renderizar
+		// un modelo ya entrenado (run16/run36) -> hipotesis CONFIRMADA.
+		//
+		// Los splats que SOBREVIVEN (extent >= suelo) quedan BIT-EXACTOS a la version
+		// original: ceil(max(extent, suelo)) = ceil(extent) cuando extent >= suelo.
+		//
+		// PARA DESHACER: poner CULL_SUBPIXEL 0 y recompilar -> comportamiento original
+		// bit-exacto (se usa la rama #else, la linea original intacta). Solo afecta al
+		// RENDER (forward); no toca el backward -> valido para re-render diagnostico,
+		// no requerido para entrenar.
+		#define CULL_SUBPIXEL 1
+		#if CULL_SUBPIXEL
+			float geo_extent = max(extent.x, extent.y);   // huella real (sin el suelo del low-pass)
+			if (geo_extent < cutoff * FilterSize)         // sub-pixel -> el splat deja de existir
+				return;                                   // radii/tiles_touched ya estan en 0
+			radius = ceil(geo_extent);
+		#else
+			// --- ORIGINAL (low-pass rescata sub-pixel al suelo cutoff*FilterSize) ---
+			radius = ceil(max(max(extent.x, extent.y), cutoff * FilterSize));
+		#endif
+		// ==========================================================
 	}
 
 	// Guard contra proyecciones degeneradas: un surfel con radio no-finito (Inf/NaN)
