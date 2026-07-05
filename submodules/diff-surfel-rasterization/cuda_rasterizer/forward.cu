@@ -12,6 +12,14 @@
 #include "forward.h"
 #include "auxiliary.h"
 #include <cooperative_groups.h>
+
+// ================= [TEST VELO 2026-07-05] =================
+// Toggle GLOBAL del cull sub-pixel (punto de verdad UNICO: lo leen el kernel
+// preprocessCUDA y el banner de FORWARD::preprocess -> el mensaje de consola
+// refleja EXACTAMENTE lo compilado). 1 = culleo sub-pixel activo; 0 = original
+// bit-exacto (low-pass). Cambiar aqui y RECOMPILAR (borrar build/ antes).
+#define CULL_SUBPIXEL 1
+// ==========================================================
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 // Forward method for converting the input spherical harmonics
@@ -250,8 +258,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		// PARA DESHACER: poner CULL_SUBPIXEL 0 y recompilar -> comportamiento original
 		// bit-exacto (se usa la rama #else, la linea original intacta). Solo afecta al
 		// RENDER (forward); no toca el backward -> valido para re-render diagnostico,
-		// no requerido para entrenar.
-		#define CULL_SUBPIXEL 1
+		// no requerido para entrenar. (El #define esta al inicio del archivo.)
 		#if CULL_SUBPIXEL
 			float geo_extent = max(extent.x, extent.y);   // huella real (sin el suelo del low-pass)
 			if (geo_extent < cutoff * FilterSize)         // sub-pixel -> el splat deja de existir
@@ -606,6 +613,20 @@ void FORWARD::preprocess(int P, int D, int M,
 	uint64_t* tiles_touched,
 	bool prefiltered)
 {
+	// Banner UNA sola vez: confirma qué build del rasterizer está cargado de verdad.
+	// Refleja la MISMA macro que usa el kernel -> si ves este mensaje, cull_subpixel
+	// está realmente compilado y activo (no un .so viejo cacheado).
+	static bool cull_banner_printed = false;
+	if (!cull_banner_printed) {
+	#if CULL_SUBPIXEL
+		printf("[RASTERIZER] CULL_SUBPIXEL = ON  (splats sub-pixel descartados; build TEST velo 2026-07-05)\n");
+	#else
+		printf("[RASTERIZER] CULL_SUBPIXEL = OFF (original low-pass, bit-exacto)\n");
+	#endif
+		fflush(stdout);
+		cull_banner_printed = true;
+	}
+
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
 		P, D, M,
 		means3D,
