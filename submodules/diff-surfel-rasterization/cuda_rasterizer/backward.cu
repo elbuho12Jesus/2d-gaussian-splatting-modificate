@@ -324,7 +324,14 @@ renderCUDA(
 			float one_minus = max(1.0f - r2, 1e-6f);
 
 			float kernel = powf(one_minus, beta_j);
-			float alpha  = opa * kernel;
+			// FIX consistencia forward↔backward: el forward clampa alpha a 0.99
+			// (forward.cu:453, "avoid numerical instabilities"). El backward debe usar
+			// el MISMO alpha, o la reconstrucción T = T/(1-alpha) diverge para splats
+			// saturados (opa·kernel→1) e infla los gradientes de todo el frente del
+			// píxel. Coincide con el 2DGS original (clampa en ambos pases). G=kernel se
+			// mantiene sin clampar (∂alpha/∂opa en la región no clampada; en la región
+			// clampada el forward es constante y el min ya reproduce derivada 0).
+			float alpha  = min(0.99f, opa * kernel);
 			const float G = kernel;
 
 			if (alpha < 1.0f / 255.0f)
