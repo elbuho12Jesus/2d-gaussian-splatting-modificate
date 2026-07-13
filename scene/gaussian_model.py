@@ -73,7 +73,16 @@ class GaussianModel:
         self.low_opacity_counter = torch.empty(0)
         self.percent_dense = 0
         self.spatial_lr_scale = 0
-        self.setup_functions()        
+        # Factor del techo de escala (clamp de get_scaling): s <= factor * extent.
+        # Default 0.1 = convención 3DGS/2DGS (comportamiento histórico bit-exacto).
+        # Configurable por env var para A/B del clamp de los gigantes del fondo
+        # (docs/clamp_escala_gigantes_fondo.html): bajarlo fuerza surfels más chicos
+        # (más cobertura, riesgo de huecos), subirlo los deja crecer (riesgo velo/OOM).
+        # Se lee aquí (no en get_scaling, que es hot-path) → mismo valor en train y
+        # render mientras la env var esté exportada en el shell (como el run script).
+        _scf = os.environ.get("SCALE_CLAMP_FACTOR", "").strip()
+        self.scale_clamp_factor = float(_scf) if _scf else 0.1
+        self.setup_functions()
 
     def capture(self):
         return (
@@ -120,7 +129,7 @@ class GaussianModel:
         # por encima del tope, así el optimizer deja de inflarlos.
         s = self.scaling_activation(self._scaling)
         if self.spatial_lr_scale > 0:
-            s = s.clamp(max=0.1 * self.spatial_lr_scale)
+            s = s.clamp(max=self.scale_clamp_factor * self.spatial_lr_scale)
         return s
     
     @property
