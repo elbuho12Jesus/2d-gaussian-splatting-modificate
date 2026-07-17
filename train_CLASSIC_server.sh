@@ -23,20 +23,20 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=24                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=65                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
 
-PRUNE_SUSTAIN=0               # prune sostenido (0=inmediato run15; run18=25 redistribuye, neto igual)
+PRUNE_SUSTAIN=5               # prune sostenido (análogo del gate dead_sustain=5 de run64; 0=inmediato run15)
 OPACITY_RESET_INTERVAL=3000   # ciclo reset→recupera/prune (SEGURO en clásico; del 2DGS original)
 DENSIFY_FROM=500              # inicio de densificación
 DENSIFY_UNTIL=15000           # fin de densificación (ventana del 2DGS original)
 DENSIFICATION_INTERVAL=100    # cada cuántas iters se densifica/poda
 DENSIFY_GRAD_THRESHOLD=0.0002 # umbral de ‖∂L/∂μ₂D‖ para clone/split
 PERCENT_DENSE=0.01            # umbral de tamaño clone vs split
-OPACITY_CULL=0.005            # min_opacity del prune (2DGS original)
+OPACITY_CULL=0.01             # min_opacity del prune (0.005=2DGS original; 0.01=poda más agresiva, run65)
 LAMBDA_DIST=0                 # reg distorsión (0 = receta 2DGS original; el 10 era nuestro)
 LAMBDA_NORMAL=0.05            # reg de consistencia de normales
-OPACITY_REG=0                 # reg L1 opacidad OFF (no está en 2DGS clásico)
-SCALE_REG=0                   # reg L1 escala OFF (en clásico EMPEORA el fondo, ver run21)
+OPACITY_REG=0.06              # reg L1 opacidad = run64 (⚠ óptimo de flowers-MCMC; en clásico puede vaciar fondo)
+SCALE_REG=0.06                # reg L1 escala = run64 (⚠ en clásico EMPEORA el fondo históricamente, ver run21)
 ITERATIONS=30000
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
