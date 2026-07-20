@@ -571,7 +571,16 @@ class GaussianModel:
         alpha_new = alpha / N
         new_opacity = self.inverse_opacity_activation(alpha_new).repeat(N, 1)
 
-        new_beta = (self._beta[selected_pts_mask] - math.log(N)).repeat(N, 1)
+        # FIX 2026-07-20 (trinquete de beta, run67): ANTES restaba math.log(N), lo que
+        # en el espacio activado (beta = 4*exp(_beta)) equivale a DIVIDIR beta entre N
+        # en CADA generacion de split -> tras 6 splits el hijo queda clavado en el suelo
+        # del clamp (_beta=-4 -> beta=0.0733) y su kernel degenera a CAJA. La analogia
+        # con escala (/0.8N) y opacidad (/N) era erronea: esas son magnitudes EXTENSIVAS
+        # y beta es el parametro de FORMA del kernel, adimensional -> no se reparte.
+        # Ahora hereda beta tal cual, consistente con densify_and_clone (599),
+        # relocate_gs (771) y add_new_gs (849), las otras 3 rutas de creacion.
+        # Detalle: docs/beta_trinquete_split_clasico.html
+        new_beta = self._beta[selected_pts_mask].repeat(N, 1)
         new_sb_params = self._sb_params[selected_pts_mask].repeat(N, 1, 1)
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_beta, new_scaling, new_rotation, new_sb_params)

@@ -23,13 +23,33 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=66                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=67                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+# ═══ run67 = ANCLA run26 (clásico sano) + UN SOLO DELTA: el fix del trinquete de β ═══
+# Deltas vs run66 (los 2 primeros REVIERTEN la regresión medida, no son experimento):
+#   · OPACITY_REG 0.02→0 y SCALE_REG 0.06→0  = reguladores de run25/26. A/B local midió
+#     que scale_reg 0.06 cuesta 1.68 dB y opacity_reg 0.02 otros 0.14 dB en clásico.
+#   · PRUNE_SUSTAIN 5→25 = igual que run26, para que el ancla sea exacta.
+# DELTA NUEVO (el experimento): gaussian_model.py:574 ya NO resta math.log(N) al crear
+#   los hijos del split → β se hereda tal cual (docs/beta_trinquete_split_clasico.html).
+# ANCLA de comparación = run26: 19.99 / 0.537 / 0.394 honesto, in-train train@30k 22.22.
+#
+# CULL_SUBPIXEL=1 SE MANTIENE (decisión del usuario 2026-07-20: seguir ese experimento).
+#   Consecuencia: run67 tiene DOS deltas vs run26 (fix de beta + cull), porque run25/26
+#   son PRE-cull (build del cull = 2026-07-05). PERO el fix de beta YA ESTA AISLADO por
+#   el A/B local (flowers, 2500 it, regs=0, prune_sustain=25) con CULL=1 en AMBOS brazos:
+#       con trinquete: train 18.84 | beta<0.1 = 57.4% | beta min 0.0733 (suelo)
+#       con el fix   : train 19.31 | beta<0.1 =  0.0% | beta min 0.5110
+#   -> +0.47 dB y colapso de beta ELIMINADO, sin NaN. El cull es comun a los dos brazos,
+#      asi que no contamina esa medida. Lo que run67 anade es la medida HONESTA a 30k.
+#   OJO al interpretar: comparar el ABSOLUTO de run67 contra run26 mezcla los 2 deltas.
+#   Si hace falta el single-delta a 30k, el run que falta es "clasico + CULL + regs=0 +
+#   trinquete" (= run67 sin el fix), no desactivar el cull.
 
 # ⚠ run65 se tituló "small clamp" pero NUNCA exportó esta env var → corrió con el
 # default 0.1. Dejarla explícita aquí + el print [CLAMP] evita repetir el fallo.
 export SCALE_CLAMP_FACTOR=0.1  # 0.1 = default 3DGS/2DGS; run64 probó 0.05
 
-PRUNE_SUSTAIN=5               # prune sostenido (análogo del gate dead_sustain=5 de run64; 0=inmediato run15)
+PRUNE_SUSTAIN=25              # = run26 (ancla). run15=0 dio el mejor clásico (20.13); 20 vs 25 no es palanca
 OPACITY_RESET_INTERVAL=3000   # ciclo reset→recupera/prune (SEGURO en clásico; del 2DGS original)
 DENSIFY_FROM=500              # inicio de densificación
 DENSIFY_UNTIL=15000           # fin de densificación (ventana del 2DGS original)
@@ -39,8 +59,8 @@ PERCENT_DENSE=0.01            # umbral de tamaño clone vs split
 OPACITY_CULL=0.005             # min_opacity del prune (0.005=2DGS original; 0.01=poda más agresiva, run65)
 LAMBDA_DIST=0                 # reg distorsión (0 = receta 2DGS original; el 10 era nuestro)
 LAMBDA_NORMAL=0.05            # reg de consistencia de normales
-OPACITY_REG=0.02              # run65 (0.06) colapsó: train PSNR 17.5, 1.06M splats, 56% beta<0.1
-SCALE_REG=0.06                # se mantiene = run65 (decisión del usuario) → run66 aísla opacity_reg
+OPACITY_REG=0                 # OFF = run25/26. En clásico la L1 cuesta PSNR (A/B local: 0.02 -> -0.14 dB)
+SCALE_REG=0                   # OFF = run25/26. A/B local: 0.06 cuesta -1.68 dB en clásico
 ITERATIONS=30000
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
