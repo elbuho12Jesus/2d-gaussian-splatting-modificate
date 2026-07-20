@@ -82,6 +82,11 @@ class GaussianModel:
         # render mientras la env var esté exportada en el shell (como el run script).
         _scf = os.environ.get("SCALE_CLAMP_FACTOR", "").strip()
         self.scale_clamp_factor = float(_scf) if _scf else 0.1
+        # Origen del valor: delata el fallo silencioso de run65 (script titulado
+        # "small clamp" que NUNCA exportó la env var → corrió con el default 0.1).
+        self.scale_clamp_source = "env SCALE_CLAMP_FACTOR" if _scf else "DEFAULT (env var NO exportada)"
+        print("[CLAMP] scale_clamp_factor = {:.4f}  <- {}".format(
+            self.scale_clamp_factor, self.scale_clamp_source))
         self.setup_functions()
 
     def capture(self):
@@ -132,6 +137,30 @@ class GaussianModel:
             s = s.clamp(max=self.scale_clamp_factor * self.spatial_lr_scale)
         return s
     
+    @torch.no_grad()
+    def clamp_report(self, iteration):
+        """Verifica que el clamp de escala se esté APLICANDO de verdad.
+
+        Compara la escala CRUDA (activación sin clamp) contra el techo. Si el clamp
+        funciona: s_max(post) == techo exacto y %topados > 0 en cuanto haya gigantes.
+        Si %topados == 0 el clamp es un no-op (nadie llega al techo) y cualquier A/B
+        sobre SCALE_CLAMP_FACTOR NO concluye nada — el caso que hay que detectar.
+        """
+        if self.spatial_lr_scale <= 0:
+            print("\n[ITER {}] [CLAMP] INACTIVO (spatial_lr_scale=0)".format(iteration))
+            return
+        ceil = self.scale_clamp_factor * self.spatial_lr_scale
+        raw = self.scaling_activation(self._scaling)          # SIN clamp
+        post = raw.clamp(max=ceil)                            # lo que ve el rasterizer
+        n = raw.numel()
+        topped = int((raw >= ceil - 1e-9).sum().item())       # componentes en el techo
+        print("\n[ITER {}] [CLAMP] factor={:.4f} techo={:.6f} | topados: {}/{} ({:.3f}%) | "
+              "s_raw max/mean={:.6f}/{:.6f} -> s_post max/mean={:.6f}/{:.6f} | recorte_max={:.6f}".format(
+                  iteration, self.scale_clamp_factor, ceil, topped, n, 100.0 * topped / max(n, 1),
+                  raw.max().item(), raw.mean().item(),
+                  post.max().item(), post.mean().item(),
+                  max(raw.max().item() - ceil, 0.0)))
+
     @property
     def get_rotation(self):
         return self.rotation_activation(self._rotation)
@@ -169,6 +198,11 @@ class GaussianModel:
 
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale
+        # Techo EFECTIVO (ya se conoce extent): s <= factor * extent. Si extent es 0
+        # el clamp de get_scaling queda inactivo (guard `spatial_lr_scale > 0`).
+        print("[CLAMP] extent(spatial_lr_scale) = {:.4f} | techo efectivo s_max = {:.4f} x {:.4f} = {:.6f} | activo = {}".format(
+            spatial_lr_scale, self.scale_clamp_factor, spatial_lr_scale,
+            self.scale_clamp_factor * spatial_lr_scale, spatial_lr_scale > 0))
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()

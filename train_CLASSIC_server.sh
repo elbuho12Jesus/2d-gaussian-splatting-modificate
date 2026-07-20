@@ -23,7 +23,11 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=65                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=66                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+
+# ⚠ run65 se tituló "small clamp" pero NUNCA exportó esta env var → corrió con el
+# default 0.1. Dejarla explícita aquí + el print [CLAMP] evita repetir el fallo.
+export SCALE_CLAMP_FACTOR=0.1  # 0.1 = default 3DGS/2DGS; run64 probó 0.05
 
 PRUNE_SUSTAIN=5               # prune sostenido (análogo del gate dead_sustain=5 de run64; 0=inmediato run15)
 OPACITY_RESET_INTERVAL=3000   # ciclo reset→recupera/prune (SEGURO en clásico; del 2DGS original)
@@ -32,11 +36,11 @@ DENSIFY_UNTIL=15000           # fin de densificación (ventana del 2DGS original
 DENSIFICATION_INTERVAL=100    # cada cuántas iters se densifica/poda
 DENSIFY_GRAD_THRESHOLD=0.0002 # umbral de ‖∂L/∂μ₂D‖ para clone/split
 PERCENT_DENSE=0.01            # umbral de tamaño clone vs split
-OPACITY_CULL=0.01             # min_opacity del prune (0.005=2DGS original; 0.01=poda más agresiva, run65)
+OPACITY_CULL=0.005             # min_opacity del prune (0.005=2DGS original; 0.01=poda más agresiva, run65)
 LAMBDA_DIST=0                 # reg distorsión (0 = receta 2DGS original; el 10 era nuestro)
 LAMBDA_NORMAL=0.05            # reg de consistencia de normales
-OPACITY_REG=0.06              # reg L1 opacidad = run64 (⚠ óptimo de flowers-MCMC; en clásico puede vaciar fondo)
-SCALE_REG=0.06                # reg L1 escala = run64 (⚠ en clásico EMPEORA el fondo históricamente, ver run21)
+OPACITY_REG=0.02              # run65 (0.06) colapsó: train PSNR 17.5, 1.06M splats, 56% beta<0.1
+SCALE_REG=0.06                # se mantiene = run65 (decisión del usuario) → run66 aísla opacity_reg
 ITERATIONS=30000
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}

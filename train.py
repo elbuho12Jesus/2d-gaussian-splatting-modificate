@@ -470,7 +470,13 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             print("\n[ITER {}] [BETA] total={} | beta<0.1: {} ({:.3f}%) | beta min/mean/max = {:.4f}/{:.4f}/{:.4f}".format(
                 iteration, _n, _low, 100.0 * _low / max(_n, 1),
                 _beta.min().item(), _beta.mean().item(), _beta.max().item()))
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
+
+        # [CLAMP] verifica que el techo de escala se aplique de verdad (%topados > 0)
+        # y con qué factor. Detecta el fallo de run65: script "small clamp" sin la env
+        # var exportada -> corrió con el default 0.1 sin avisar.
+        scene.gaussians.clamp_report(iteration)
+
+        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()},
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
 
         for config in validation_configs:
