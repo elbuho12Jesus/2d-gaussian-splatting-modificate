@@ -358,6 +358,20 @@
         <td>sin cap</td><td>3000</td><td>4.88 M</td>
         <td class="l"><b>🔧 FIX DEL TRINQUETE DE β + vuelta al ancla run26.</b> <code>densify_and_split</code> (<code>scene/gaussian_model.py</code>) <b>restaba <code>math.log(N)</code></b> al <code>_beta</code> de los hijos; como <code>get_beta = 4·exp(_beta)</code>, restar en el crudo = <b>DIVIDIR β entre 2 por generación</b> → tras ~6 splits el hijo queda clavado en el suelo del clamp (4·e⁻⁴=<b>0.0733</b>) y el kernel <code>(1−r²)^β</code> degenera a <b>CAJA</b>. Solo afectaba al <b>clásico</b> (<code>densify_and_clone</code>, <code>relocate_gs</code> y <code>add_new_gs</code> ya <i>copiaban</i> β). <b>FIX:</b> <code>new_beta = self._beta[selected_pts_mask].repeat(N,1)</code>. <b>⚠ El bug existe desde el <code>first commit</code> → contamina TODO el historial clásico (run14–27, 65, 66).</b> Config = ancla run26 (<code>opacity_reg</code> 0, <code>scale_reg</code> 0, <code>prune_sustain</code> 25, <code>opacity_cull</code> 0.005, sin cap). <b>20.6684 / 0.5811 / 0.3675</b> = <span class="good">MEJOR CLÁSICO DEL HISTORIAL con diferencia</span>. <b>Trinquete MUERTO:</b> <code>[BETA]</code> @7000 = <b>0 splats (0.000%)</b> con β&lt;0.1 y solo 0.039% al final; β min 0.0959, mean 2.66 (run65 55.9%, run66 48.71%). <b>Densificación revivida: 4.875M</b> — y con <b>la MITAD</b> de splats que run25/26 saca mejores métricas en las 3 (los de run25/26 eran cajas degeneradas, no masa útil). <b>OJO: no es A/B limpio</b> (= run26 + fix + <code>CULL_SUBPIXEL</code>=1).</td>
       </tr>
+      <tr>
+        <td class="l run">run68–71</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune sostenido 25 <span class="note">(= run67)</span></td>
+        <td>sin cap</td><td>3000</td><td>5.62 → 5.94 M</td>
+        <td class="l"><b>SWEEP <code>scale_reg</code> en CLÁSICO LIMPIO</b> (0.01 / 0.02 / 0.03 / 0.06), base <b>run67 EXACTO</b> — el ancla es <code>scale_reg</code>=0. <b>El dial FALLA también aquí (9º fallo; los 8 previos eran todos MCMC):</b> PSNR plano dentro de ±0.13 dB (20.69 / 20.54 / 20.60 / 20.66 vs ancla 20.6684), <b>SSIM monótono a la baja</b> (0.5811→0.5766→0.5747→0.5746→0.5733) y LPIPS peor en los cuatro. <b>Pero el barrido resuelve tres cosas:</b> (1) <b>el dial SÍ muerde</b> — <code>s(mean)</code> baja monótono 0.0422→0.0247 (<b>−41%</b>) → el resultado plano es real, no un NO-OP (el fallo de run65 con el clamp); (2) <b>HIPÓTESIS DE run65 DESCARTADA DEL TODO</b> — β&lt;0.1 se queda en <b>~0.3%</b> en todo el barrido, incluso a 0.06 → la vía "encoger surfels ⇒ el optimizador aplana β" <b>no existe</b>: el trinquete era el <b>100%</b> de aquel colapso; (3) <b>cuantifica el confusor</b> — run71 usa <code>scale_reg</code> <b>0.06 exacto, el mismo de run65/66</b>, y da <b>20.6636</b> en vez de 15.59 / 16.10 → de los <b>−5.08 dB</b> de run65, <code>scale_reg</code> aporta <b>≈0.005 dB</b>. Efecto colateral: sube el conteo 4.88→5.94 M (surfels más chicos disparan clone/split) sin comprar calidad.</td>
+      </tr>
+      <tr>
+        <td class="l run">run72</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune sostenido <b>10</b> <span class="note">(run67 = 25)</span></td>
+        <td>sin cap</td><td>3000</td><td>4.79 M</td>
+        <td class="l"><b>A/B de <code>prune_sustain</code> 25→10, único delta sobre run67.</b> <b>20.7436 / 0.5795 / 0.3676</b> = <b>NEUTRO</b> (PSNR +0.075, SSIM −0.0016, LPIPS +0.0001 — las tres dentro del ruido). Diagnóstico <b>calcado</b> al ancla: β&lt;0.1 0.038%, β min 0.0963, <code>s(mean)</code> 0.0422, topados 1.067%, N −1.7%, train @30k 23.52. <b>Primera medida del dial SIN el trinquete vivo</b> (run18/25/26 lo probaron contaminado) y extiende el rango hacia abajo → <b><code>prune_sustain</code> no es palanca, ahora confirmado limpio.</b></td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -597,6 +611,31 @@
         <td><b>20.67</b></td><td><b>0.581</b></td><td><b>0.368</b></td>
         <td>20.79</td><td>23.63</td><td>2.84</td>
       </tr>
+      <tr>
+        <td class="l run">run68 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>scale_reg</code> 0.01</span></td>
+        <td>20.69</td><td>0.5766</td><td>0.3684</td>
+        <td>20.79</td><td>23.33</td><td>2.54</td>
+      </tr>
+      <tr>
+        <td class="l run">run69 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>scale_reg</code> 0.02</span></td>
+        <td>20.54</td><td>0.5747</td><td>0.3715</td>
+        <td>20.65</td><td>23.32</td><td>2.67</td>
+      </tr>
+      <tr>
+        <td class="l run">run70 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>scale_reg</code> 0.03</span></td>
+        <td>20.60</td><td>0.5746</td><td>0.3704</td>
+        <td>20.67</td><td>23.26</td><td>2.59</td>
+      </tr>
+      <tr>
+        <td class="l run">run71 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>scale_reg</code> <b>0.06</b> — el valor de run65/66</span></td>
+        <td>20.66</td><td>0.5733</td><td>0.3713</td>
+        <td>20.71</td><td>23.27</td><td>2.56</td>
+      </tr>
+      <tr>
+        <td class="l run">run72 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>prune_sustain</code> 25→10</span></td>
+        <td>20.74</td><td>0.5795</td><td>0.3676</td>
+        <td>20.84</td><td>23.52</td><td>2.68</td>
+      </tr>
     </tbody>
   </table>
   <p class="note">↑ mayor es mejor · ↓ menor es mejor. Las 3 primeras columnas = <code>metrics.py</code> (honesto, held-out). Las 3 últimas = <b>eval in-train de <code>train.py</code> @30k</b> = <b>la métrica que reportan los papers</b> (2DGS, MipNeRF360, etc.: PSNR sobre el split de test evaluado dentro del entrenamiento, sin el resize del pipeline de render). <b>PSNR in-train</b> = test @30k del eval interno · <b>train @30k</b> = PSNR sobre el split de train · <b>gap</b> = train − test (mayor gap = más sobreajuste).</p>
@@ -642,6 +681,17 @@
       <br><b>Hallazgo colateral — el clásico es HONESTO:</b> offset in-train→<code>metrics.py</code> de solo <b>−0.12 dB</b> (20.79 → 20.67), como el original (−0.03) y muy lejos del <b>~1.4 dB</b> de nuestros MCMC. En el clásico, lo que ves en el log es lo que hay.
       <br><b>PALANCA NUEVA SIN MEDIR — β ahora choca contra el TECHO:</b> <code>beta max</code> sube monótono 6.75→10.4→13.4→21.6→<b>29.5562</b>, que es <b>exactamente 4·e²</b> = el clamp <i>superior</i> de <code>train.py:399</code>. Antes se pegaba al suelo, ahora al techo → <b>subir el clamp superior es un experimento barato y pendiente</b>.
       <br><b>⚠ No es A/B limpio:</b> run67 = run26 + fix de β + <code>CULL_SUBPIXEL</code>=1 (bundle de 2 deltas). El fix está aislado por el A/B local (2500 it, regs=0: con trinquete train 18.84 / β&lt;0.1 57.4% → con fix train 19.31 / β&lt;0.1 0.000%, <b>+0.47 dB</b>), pero el reparto exacto del +0.68 no está medido. <b>Y no bate a run36</b> (21.16/0.5926/0.3555): <b>el MCMC sigue siendo el techo global del proyecto.</b></li>
+
+      <li><b>Sweep <code>scale_reg</code> en CLÁSICO LIMPIO (run68–71) — el dial FALLA, pero el barrido cierra dos preguntas abiertas:</b>
+      curva de PSNR sobre el ancla run67 (<code>scale_reg</code>=0, 20.6684): 0.01→<b>20.6905</b> · 0.02→<b>20.5387</b> · 0.03→<b>20.6028</b> · 0.06→<b>20.6636</b>. Todo <b>plano dentro de ±0.13 dB</b>, con <b>SSIM monótono a la baja</b> (0.5811→0.5766→0.5747→0.5746→0.5733) y LPIPS peor en los cuatro puntos: <b>ningún valor bate al ancla</b>. Es el <b>9º fallo del dial</b> — y el primero en clásico limpio (los 8 anteriores eran todos MCMC; las dos pruebas previas en clásico, run65/66, estaban contaminadas).
+      <br><b>(1) El dial SÍ muerde</b> — <code>s(mean)</code> baja monótono 0.0422→0.0318→0.0297→0.0280→<b>0.0247</b> (−41%). Esto importa: significa que el resultado plano es <b>real</b> y no un artefacto de configuración, que es justo el fallo que invalidó a run65 con el clamp de escala (<code>topados</code>≈0 ⇒ NO-OP ⇒ el A/B no concluye nada).
+      <br><b>(2) La hipótesis de run65 queda DESCARTADA DEL TODO</b> — run65 postulaba que encoger los surfels forzaba al <b>optimizador</b> a aplanar β para recuperar cobertura. Aquí <code>scale_reg</code> llega hasta 0.06 con el trinquete ya muerto y <b>β&lt;0.1 se queda en ~0.3%</b> en todo el barrido. Esa vía <b>no existe</b>: el trinquete de <code>densify_and_split</code> era el <b>100%</b> del colapso de β, un mecanismo determinista en el que el optimizador nunca intervino.
+      <br><b>(3) Cuantifica el confusor de run65/66</b> — run71 corre con <code>scale_reg</code> <b>0.06 exacto, el mismo valor de run65/66</b>, y saca <b>20.6636</b> en lugar de <b>15.5903</b> / <b>16.0951</b>. Es decir: de los <b>−5.08 dB</b> de run65, <code>scale_reg</code> aportaba <b>≈0.005 dB</b>. El desastre era <b>íntegramente</b> trinquete + los tres sumideros de opacidad. Efecto colateral del dial: sube el conteo 4.88→5.94 M (surfels más chicos disparan clone/split) sin comprar calidad, y baja levemente el train (23.63→23.27).</li>
+
+      <li><b>run72 (<code>prune_sustain</code> 25→10, único delta sobre run67):</b> <b>20.7436 / 0.5795 / 0.3676</b> = <b>A/B NEUTRO</b> (PSNR +0.075, SSIM −0.0016, LPIPS +0.0001 — las tres dentro del ruido). El diagnóstico sale <b>calcado</b> al ancla: β&lt;0.1 0.038%, β min 0.0963, <code>s(mean)</code> 0.0422, topados 1.067%, N 4.79M (−1.7%), train @30k 23.52. <b><code>prune_sustain</code> no es palanca</b> — ya lo sugerían run18/25/26 (20 vs 25 indistinguibles), pero aquellos se midieron <b>con el trinquete vivo</b>; esta es la primera confirmación válida, y además extiende el rango probado hacia abajo (10).</li>
+
+      <li><b>LECTURA CONJUNTA (run68–72): run67 es un ÓPTIMO PLANO.</b> Dos diales independientes — apretar la escala y cambiar el ritmo de poda — <b>no mueven nada</b> alrededor de él. La conclusión operativa: <b>el fix del trinquete capturó toda la ganancia disponible en el camino clásico</b>, y el residuo que queda hasta run36 (21.16) <b>no está en estos diales</b>.
+      <br><b>⛔ Y la última palanca candidata —el TECHO de β— queda DESCARTADA sin gastar un run.</b> <code>beta max</code> = <b>29.5562</b> = exactamente <b>4·e²</b> (el clamp superior), clavado al dígito en run67, run71 <b>y</b> run72, parecía indicar que β empujaba contra el tope. <b>Pero <code>beta max</code> es un máximo sobre ~4,9 M de muestras</b> — que sature solo dice que <u>al menos un</u> splat llegó. Medido en los plys: <b>run67 = 1 splat de 4.875.097 · run72 = 9 de 4.793.165 (0.00002%)</b>, con el <b>p99.9 en β≈11 = 37% del techo</b> y <b>0 splats en el suelo</b>. La distribución es una campana centrada en β≈2.5 que <b>muere sola</b> antes del límite. Aplica la regla del propio proyecto tras run65: <i>si <code>topados</code>≈0.00%, el clamp es un NO-OP y el A/B no concluye nada</i>. <b>Lección generalizable: para saber si un clamp muerde hay que mirar el HISTOGRAMA (o el % de topados), nunca el MÁXIMO</b> — el <code>[CLAMP]</code> de escala ya imprime <code>topados</code>; el <code>[BETA]</code> solo imprime min/mean/max, y por eso indujo el error. Análisis completo con las tres gráficas: <b><a href="techo_beta_clamp_superior.html">techo_beta_clamp_superior.html</a></b>.</li>
 
       <li><b>VEREDICTO (revisado tras el sweep run33/34/36):</b> el velo/fondo sigue siendo un <b>muro estructural del surfel 2D</b> (gigantes clavados en <code>extent</code>, translúcidos, sin view-dependence) — ningún sweep lo <i>elimina</i>. PERO <code>opacity_reg</code> ↑ <b>adelgaza</b> el velo y <b>recupera PSNR</b>, y con <b>run36 (0.06) el repo DOMINA al original en las tres métricas honestas</b> → el "superar baseline" del objetivo está cumplido. Quedan <b>tres techos según prioridad</b>: <b>run16</b> (0.01) = mejor LPIPS (la tesis perceptual) · <b>run33</b> (0.03) = mejor SSIM y Pareto equilibrado · <b>run36</b> (0.06) = mejor PSNR y único que gana al original en todo. <code>dead_sustain 5</code> sigue siendo el óptimo del gate. <b>Sweep <code>opacity_reg</code> CERRADO</b> (run37/0.07 confirmó el pico en 0.06 → PSNR se da la vuelta). Mapa de decisión: <b>(A)</b> fijar run36 o run33 como entrega según métrica objetivo · <b>(B)</b> migrar a gsplat/3D (arreglo estructural real del fondo) · <b>(C)</b> clamp del rasterizer (baja prob). Cheap-sweep AGOTADO de nuevo (ahora con el dial <code>opacity_reg</code> ya mapeado de punta a punta).</li>
     </ul>

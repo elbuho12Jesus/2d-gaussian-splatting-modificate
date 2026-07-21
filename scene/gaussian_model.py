@@ -181,7 +181,11 @@ class GaussianModel:
     
     @property
     def get_beta(self):
-        b = self._beta.clamp(min=-6.0, max=2.0)
+        # min -4.0 (igualado con el clamp de train.py:399; el -6.0 previo era holgura
+        # muerta: train.py proyecta _beta a [-4,2] cada iter, nunca baja de -4).
+        # max 2.7081 (run73): beta_techo 4*e^2.7081 = 60 (viejo 4*e^2 = 29.556).
+        # Los DOS clamps deben moverse juntos o el forward recorta a 29.556 (NO-OP).
+        b = self._beta.clamp(min=-4.0, max=2.7081)
         return (4.0 * torch.exp(b)).contiguous()
 
     @property
