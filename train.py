@@ -401,7 +401,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # _beta a max=2.0 en el forward: si solo se sube este, get_beta sigue recortando
             # a 29.556 y el experimento es un NO-OP (fallo tipo run65). Min = -4.0 en AMBOS.
             with torch.no_grad():
-                gaussians._beta.data.clamp_(min=-4.0, max=2.7081)
+                gaussians._beta.data.clamp_(min=-4.0, max=2.0)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
