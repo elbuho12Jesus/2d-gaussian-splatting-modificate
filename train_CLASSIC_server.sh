@@ -49,7 +49,10 @@ RUN=67                        # nº de run → output/m360/${DATASET}_beta_run${
 # default 0.1. Dejarla explícita aquí + el print [CLAMP] evita repetir el fallo.
 export SCALE_CLAMP_FACTOR=0.1  # 0.1 = default 3DGS/2DGS; run64 probó 0.05
 
-PRUNE_SUSTAIN=25              # = run26 (ancla). run15=0 dio el mejor clásico (20.13); 20 vs 25 no es palanca
+PRUNE_SUSTAIN=25              # CONFIG GANADORA = run67 (MEJOR CLÁSICO: 20.6684/0.5811/0.3675 honesto).
+                              # Barrido LIMPIO (β [-4,2], trinquete muerto) CERRADO: ps 5=20.5439(run74)
+                              # · 10=20.7436(run72) · 20=20.6318(run75) · 25=20.6684(run67) → plano
+                              # dentro de ~0.20 dB, SSIM/LPIPS clavados → prune_sustain NO es palanca.
 OPACITY_RESET_INTERVAL=3000   # ciclo reset→recupera/prune (SEGURO en clásico; del 2DGS original)
 DENSIFY_FROM=500              # inicio de densificación
 DENSIFY_UNTIL=15000           # fin de densificación (ventana del 2DGS original)
