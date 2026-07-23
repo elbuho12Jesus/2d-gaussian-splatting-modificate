@@ -386,6 +386,13 @@
         <td>sin cap</td><td>3000</td><td>4.79 M</td>
         <td class="l"><b>A/B de <code>prune_sustain</code> 25→5, único delta sobre run67</b> (β correcto en [-4,2]). <b>20.5439 / 0.5795 / 0.3687</b> = <b>NEUTRO</b> (vs run67 PSNR −0.125, SSIM −0.0016, LPIPS +0.0012; vs run72 PSNR −0.20, SSIM 0.0000, LPIPS +0.0011). Es el PSNR más bajo del barrido, pero la horquilla total (5/10/25) es solo <b>~0.20 dB</b> con SSIM/LPIPS casi idénticos = <b>PLANO</b>. <code>prune_sustain 5</code> poda más agresivo (recicla antes) y recorta un pelín de masa útil sin romper nada. <b>Cierra el barrido hacia abajo → <code>prune_sustain</code> NO es palanca, rango 5/10/25 confirmado.</b> Diagnóstico limpio: <b>β max 29.5562 EXACTO</b> (topado en el techo [-4,2], 5 splats de 4.79M), β min 0.0962, β&lt;0.1 0.062%, trinquete muerto. <b>Control colateral:</b> este run (β [-4,2]) 20.5439 vs el 1er intento contaminado (β techo 60) 20.5930 = −0.049 dB = idénticos → reconfirma el NO-OP del techo de run73.</td>
       </tr>
+      <tr>
+        <td class="l run">run75</td>
+        <td><span class="tag tCLA">CLÁSICO</span></td>
+        <td>prune sostenido <b>20</b> <span class="note">(run67 = 25)</span></td>
+        <td>sin cap</td><td>3000</td><td>4.83 M</td>
+        <td class="l"><b>A/B de <code>prune_sustain</code> 25→20, único delta sobre run67</b> (β [-4,2]). <b>20.6318 / 0.5794 / 0.3683</b> = <b>NEUTRO</b> (vs run67 PSNR −0.037, SSIM −0.0017, LPIPS +0.0008 — dentro del ruido, cae casi exacto sobre el ancla). <b>Cierra el hueco 10–25 del barrido</b> que antes solo tocaban runs contaminados por el trinquete (run18/25/26). Curva completa: ps 5=20.5439 · 10=20.7436 · <b>20=20.6318</b> · 25=20.6684 = no monótona y <b>PLANA dentro de ~0.20 dB</b> → <code>prune_sustain</code> NO es palanca, rango 5/10/20/25 cubierto. Diagnóstico limpio: β max 29.5562 EXACTO, β min 0.0962, β&lt;0.1 0.027%, trinquete muerto.</td>
+      </tr>
     </tbody>
   </table>
   <div class="legend">
@@ -660,6 +667,11 @@
         <td>20.54</td><td>0.5795</td><td>0.3687</td>
         <td>20.66</td><td>23.54</td><td>2.88</td>
       </tr>
+      <tr>
+        <td class="l run">run75 <span class="tag tCLA">CLA</span> <span class="note">= run67 + <code>prune_sustain</code> 25→20</span></td>
+        <td>20.63</td><td>0.5794</td><td>0.3683</td>
+        <td>20.68</td><td>23.59</td><td>2.91</td>
+      </tr>
     </tbody>
   </table>
   <p class="note">↑ mayor es mejor · ↓ menor es mejor. Las 3 primeras columnas = <code>metrics.py</code> (honesto, held-out). Las 3 últimas = <b>eval in-train de <code>train.py</code> @30k</b> = <b>la métrica que reportan los papers</b> (2DGS, MipNeRF360, etc.: PSNR sobre el split de test evaluado dentro del entrenamiento, sin el resize del pipeline de render). <b>PSNR in-train</b> = test @30k del eval interno · <b>train @30k</b> = PSNR sobre el split de train · <b>gap</b> = train − test (mayor gap = más sobreajuste).</p>
@@ -713,7 +725,7 @@
       <br><b>(3) Cuantifica el confusor de run65/66</b> — run71 corre con <code>scale_reg</code> <b>0.06 exacto, el mismo valor de run65/66</b>, y saca <b>20.6636</b> en lugar de <b>15.5903</b> / <b>16.0951</b>. Es decir: de los <b>−5.08 dB</b> de run65, <code>scale_reg</code> aportaba <b>≈0.005 dB</b>. El desastre era <b>íntegramente</b> trinquete + los tres sumideros de opacidad. Efecto colateral del dial: sube el conteo 4.88→5.94 M (surfels más chicos disparan clone/split) sin comprar calidad, y baja levemente el train (23.63→23.27).</li>
 
       <li><b>Barrido <code>prune_sustain</code> en CLÁSICO LIMPIO (run72 = 10, run74 = 5), único delta sobre run67 (= 25) — el dial NO es palanca, rango 5/10/25 cerrado:</b>
-      curva de PSNR honesto sobre el ancla run67 (20.6684): ps 25→<b>20.6684</b> · ps 10→<b>20.7436</b> (run72) · ps 5→<b>20.5439</b> (run74). Horquilla total <b>~0.20 dB</b> con SSIM prácticamente clavado (0.5811 / 0.5795 / 0.5795) y LPIPS igual (0.3675 / 0.3676 / 0.3687): <b>ningún valor se separa del ancla</b>. run72 diagnóstico <b>calcado</b> (β&lt;0.1 0.038%, topados 1.067%, N 4.79M, train @30k 23.52); run74 igual de limpio (β max 29.5562 exacto en el techo [-4,2], β min 0.0962, β&lt;0.1 0.062%, train @30k 23.54). <b>Primera medida del dial SIN el trinquete vivo</b> — ya lo sugerían run18/25/26 (20 vs 25 indistinguibles) pero aquellos estaban contaminados; run72/run74 lo confirman limpio y extienden el rango hasta 5. <code>prune_sustain 5</code> poda más agresivo y da el PSNR más bajo, pero dentro del ruido. <b>Junto con el sweep <code>scale_reg</code> (run68–71) esto sella que run67 es un ÓPTIMO PLANO: ni la escala, ni el ritmo de poda, ni el techo de β (run73) lo mueven.</b> <span class="note">(Nota: el 1er intento de run74 corrió con el techo β 60 de run73 aún puesto en el servidor —<code>beta max</code> 34.1 &gt; 29.556 lo delató— y se rehízo con β [-4,2]; el correcto 20.5439 vs el contaminado 20.5930 = −0.049 dB idénticos → reconfirma el NO-OP del techo.)</span></li>
+      curva de PSNR honesto sobre el ancla run67 (ps 25 = 20.6684): ps 5→<b>20.5439</b> (run74) · ps 10→<b>20.7436</b> (run72) · ps 20→<b>20.6318</b> (run75) · ps 25→<b>20.6684</b>. Horquilla total <b>~0.20 dB</b>, no monótona, con SSIM prácticamente clavado (~0.579) y LPIPS igual (~0.368): <b>ningún valor se separa del ancla</b> — rango <b>5/10/20/25 cubierto</b> (run75 cierra el hueco 10–25 que antes solo tocaban los runs contaminados por el trinquete). run72 diagnóstico <b>calcado</b> (β&lt;0.1 0.038%, topados 1.067%, N 4.79M, train @30k 23.52); run74 igual de limpio (β max 29.5562 exacto en el techo [-4,2], β min 0.0962, β&lt;0.1 0.062%, train @30k 23.54). <b>Primera medida del dial SIN el trinquete vivo</b> — ya lo sugerían run18/25/26 (20 vs 25 indistinguibles) pero aquellos estaban contaminados; run72/run74 lo confirman limpio y extienden el rango hasta 5. <code>prune_sustain 5</code> poda más agresivo y da el PSNR más bajo, pero dentro del ruido. <b>Junto con el sweep <code>scale_reg</code> (run68–71) esto sella que run67 es un ÓPTIMO PLANO: ni la escala, ni el ritmo de poda, ni el techo de β (run73) lo mueven.</b> <span class="note">(Nota: el 1er intento de run74 corrió con el techo β 60 de run73 aún puesto en el servidor —<code>beta max</code> 34.1 &gt; 29.556 lo delató— y se rehízo con β [-4,2]; el correcto 20.5439 vs el contaminado 20.5930 = −0.049 dB idénticos → reconfirma el NO-OP del techo.)</span></li>
 
       <li><b>LECTURA CONJUNTA (run68–72): run67 es un ÓPTIMO PLANO.</b> Dos diales independientes — apretar la escala y cambiar el ritmo de poda — <b>no mueven nada</b> alrededor de él. La conclusión operativa: <b>el fix del trinquete capturó toda la ganancia disponible en el camino clásico</b>, y el residuo que queda hasta run36 (21.16) <b>no está en estos diales</b>.
       <br><b>⛔ Y la última palanca candidata —el TECHO de β— queda DESCARTADA sin gastar un run.</b> <code>beta max</code> = <b>29.5562</b> = exactamente <b>4·e²</b> (el clamp superior), clavado al dígito en run67, run71 <b>y</b> run72, parecía indicar que β empujaba contra el tope. <b>Pero <code>beta max</code> es un máximo sobre ~4,9 M de muestras</b> — que sature solo dice que <u>al menos un</u> splat llegó. Medido en los plys: <b>run67 = 1 splat de 4.875.097 · run72 = 9 de 4.793.165 (0.00002%)</b>, con el <b>p99.9 en β≈11 = 37% del techo</b> y <b>0 splats en el suelo</b>. La distribución es una campana centrada en β≈2.5 que <b>muere sola</b> antes del límite. Aplica la regla del propio proyecto tras run65: <i>si <code>topados</code>≈0.00%, el clamp es un NO-OP y el A/B no concluye nada</i>. <b>Lección generalizable: para saber si un clamp muerde hay que mirar el HISTOGRAMA (o el % de topados), nunca el MÁXIMO</b> — el <code>[CLAMP]</code> de escala ya imprime <code>topados</code>; el <code>[BETA]</code> solo imprime min/mean/max, y por eso indujo el error. Análisis completo con las tres gráficas: <b><a href="techo_beta_clamp_superior.html">techo_beta_clamp_superior.html</a></b>.
@@ -790,6 +802,79 @@
       <li><b>El dial <code>opacity_reg</code> NO es transferible entre escenas.</b> El 0.06 óptimo en flowers (adelgaza el velo del fondo rasante) <b>estorba en bonsai</b> (sin fondo rasante → solo vacía detalle): 0.06→0.01 subió las 3 métricas de golpe (run43→run44: +2.29 dB / +0.0253 / −0.0329). Su óptimo depende de la escena.</li>
       <li><b>El cap SÍ era palanca en bonsai</b> (al revés que en flowers, saturado): 4.5M→1.5M dio +0.84 dB PSNR (run42→run43). La sobre-densificación del MCMC daña en escena acotada. Los tres runs de 1.5M topan exacto (vs 798K del original) → el MCMC gasta todo el presupuesto aunque la escena no lo pida.</li>
       <li><b>El gap real era el dial, no el cap:</b> bajar el cap recuperó &lt;1 dB; el <code>opacity_reg</code> correcto recuperó los ~2 dB restantes de golpe y cerró SSIM/LPIPS. run44 es el techo de bonsai hasta ahora.</li>
+    </ul>
+  </div>
+
+  <h2>3·ter · BICYCLE (salto de dataset — escena EXTERIOR NO ACOTADA, régimen flowers)</h2>
+  <div class="card note">
+    Segundo exterior no acotado (como flowers): fondo rasante, riesgo de velo translúcido. <b>run77 = camino CLÁSICO
+    LIMPIO</b> (config run67/run76: clone/split + <code>opacity_reset</code> 3000 + fix del trinquete de β + β [−4,2]
+    + <code>opacity_reg</code> 0 + <code>scale_reg</code> 0 + <code>prune_sustain</code> 25 + <code>opacity_cull</code>
+    0.005, sin cap, <code>CULL_SUBPIXEL</code>=1). Métricas honestas con el <b>MISMO <code>metrics.py</code></b> (25
+    vistas, iter 30000, <code>--eval</code>). <b>Baseline 2DGS oficial bicycle medido en LOCAL con nuestro
+    <code>metrics.py</code></b> (honesto-vs-honesto real). In-train no disponible en local (<code>n/d</code>).
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Modelo</th><th>Densif.</th><th>cap_max</th><th>Splats finales</th>
+        <th>PSNR ↑<br><span class="note">metrics.py</span></th><th>SSIM ↑</th><th>LPIPS ↓</th><th class="l">Nota</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="l run">Original 2DGS</td>
+        <td><span class="tag tCLA">CLA</span></td>
+        <td>—</td><td>3.55 M</td>
+        <td class="worst">24.6091</td><td class="worst">0.7134</td><td class="worst">0.3064</td>
+        <td class="l"><b>Baseline honesto de bicycle</b> (medido local con nuestro <code>metrics.py</code>). Densificación clásica a 3.55M splats. <b>run77 lo supera en las tres.</b></td>
+      </tr>
+      <tr style="background:rgba(63,185,80,.10)">
+        <td class="l run">run77 <span class="tag tCLA">CLA</span></td>
+        <td><span class="tag tCLA">CLA</span></td>
+        <td>—</td><td>7.67 M</td>
+        <td class="best">24.7836</td><td class="best">0.7424</td><td class="best">0.2509</td>
+        <td class="l"><b>Clásico limpio (config run67/run76) sobre bicycle.</b> <span class="arrow-up">DOMINA al oficial en las TRES métricas: PSNR +0.175, SSIM +0.029, LPIPS −0.056</span>. <b>PRIMERA escena EXTERIOR donde el clásico gana también PSNR</b> — en flowers run67 ganaba SSIM+LPIPS pero <b>perdía PSNR (−0.22)</b>; aquí el fix del trinquete + 2.16× masa útil (7.67M vs 3.55M) sí compra también el PSNR. Diagnóstico limpio: trinquete muerto (β&lt;0.1 0.010%, β min 0.0964, mean 2.59, max 29.489 &lt; techo 29.556, 0% topado), β [−4,2].</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3·quater · KITCHEN (salto de dataset — escena INTERIOR ACOTADA, régimen bonsai)</h2>
+  <div class="card note">
+    Segundo interior acotado (como bonsai): sin fondo rasante ni velo. <b>run78 = misma config clásica limpia que
+    run76/run77</b>. Métricas honestas con el <b>MISMO <code>metrics.py</code></b> (35 vistas, iter 30000,
+    <code>--eval</code>). <b>Baseline 2DGS oficial kitchen medido en LOCAL con nuestro <code>metrics.py</code></b>.
+    In-train no disponible (<code>n/d</code>).
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">Modelo</th><th>Densif.</th><th>cap_max</th><th>Splats finales</th>
+        <th>PSNR ↑<br><span class="note">metrics.py</span></th><th>SSIM ↑</th><th>LPIPS ↓</th><th class="l">Nota</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:rgba(63,185,80,.06)">
+        <td class="l run">Original 2DGS</td>
+        <td><span class="tag tCLA">CLA</span></td>
+        <td>—</td><td>818 K</td>
+        <td class="best">30.3389</td><td class="worst">0.9210</td><td class="worst">0.1383</td>
+        <td class="l"><b>Baseline honesto de kitchen</b> (medido local). Converge a solo 818K splats. Conserva el mejor PSNR (por +0.05, dentro del ruido); <b>run78 le arrebata SSIM y LPIPS</b>.</td>
+      </tr>
+      <tr style="background:rgba(110,168,254,.06)">
+        <td class="l run">run78 <span class="tag tCLA">CLA</span></td>
+        <td><span class="tag tCLA">CLA</span></td>
+        <td>—</td><td>1.82 M</td>
+        <td>30.2876</td><td class="best">0.9266</td><td class="best">0.1255</td>
+        <td class="l"><b>Clásico limpio (config run67/run76) sobre kitchen.</b> <span class="arrow-up">GANA SSIM (+0.0056) y LPIPS (−0.0128)</span>, <span class="arrow-dn">pierde PSNR por un pelo (−0.051 = ruido)</span> → <b>mismo patrón perceptual que flowers/bonsai/bicycle</b>. <b>CONTRADICE la lección de bonsai:</b> en bonsai (run76, mismo régimen acotado + misma config) el clásico <b>PERDÍA SSIM</b> al oficial (0.9303&lt;0.9359); aquí en kitchen lo <b>GANA</b> (0.9266&gt;0.9210) → <b>"el clásico no transfiere a acotada / rompe la estructura" NO es regla general de escenas acotadas</b>, bonsai era el caso peor. Diagnóstico limpio: trinquete muerto (β&lt;0.1 0.000%, β min 0.0995, mean 2.90, max 11.90), β [−4,2]. N 1.82M vs 818K oficial (2.22×).</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="card">
+    <ul>
+      <li><b>run77 (bicycle, clásico limpio) DOMINA al oficial en las 3 métricas, PSNR incluido</b> (24.7836/0.7424/0.2509 vs 24.6091/0.7134/0.3064). Es la <b>primera escena exterior donde el clásico gana también PSNR</b> (en flowers perdía −0.22). El fix del trinquete de β convierte al clásico en un camino competitivo también fuera de flowers.</li>
+      <li><b>run78 (kitchen, clásico limpio) gana SSIM+LPIPS al oficial, pierde PSNR por ruido</b> (−0.05). <b>Rompe la conclusión de bonsai</b>: kitchen es interior acotada igual que bonsai, pero aquí el clásico SÍ gana SSIM. La regla "el clásico rompe la estructura en escenas acotadas" era específica de bonsai, no general.</li>
+      <li><b>Lectura conjunta (4 escenas):</b> el clásico limpio (config run67) gana <b>perceptualmente</b> (SSIM/LPIPS) al oficial 2DGS en <b>flowers, bicycle y kitchen</b>, y en <b>bicycle domina las 3</b>. Solo <b>bonsai</b> se le resiste (pierde SSIM). El fix del trinquete de β (run67) generaliza mucho mejor de lo que sugería el único punto acotado previo (bonsai).</li>
     </ul>
   </div>
 
