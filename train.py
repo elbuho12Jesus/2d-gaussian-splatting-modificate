@@ -16,6 +16,7 @@ from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
+from scene.gaussian_model import BETA_RAW_MIN, BETA_RAW_MAX, beta_from_raw
 from utils.general_utils import safe_state, build_rotation
 import uuid
 from tqdm import tqdm
@@ -394,14 +395,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             mem_probe("post_step", iteration, npts=gaussians.get_xyz.shape[0])
 
-            # ✅ Clamp suave del parámetro b (no del beta)
-            # TECHO SUBIDO (run73, 2026-07-21): max 2.0 -> 2.7081. beta = 4*e^_beta,
-            # asi que 2.0 -> beta_techo 4*e^2 = 29.556 (viejo) y 2.7081 -> 4*e^2.7081 = 60 (nuevo).
-            # DEBE ir de la mano con get_beta (gaussian_model.py:184), que tambien clampa
-            # _beta a max=2.0 en el forward: si solo se sube este, get_beta sigue recortando
-            # a 29.556 y el experimento es un NO-OP (fallo tipo run65). Min = -4.0 en AMBOS.
+            # ✅ Clamp suave del parámetro b (no del beta).
+            # Rango en BETA_RAW_MIN/MAX (scene/gaussian_model.py) = FUENTE UNICA que
+            # comparten este clamp, get_beta (forward) y el print [BETA-TECHO]. Antes
+            # estaba hardcodeado en los tres sitios y al revertir run73 se quedaron
+            # descuadrados. Para mover el techo, editar SOLO esas constantes.
             with torch.no_grad():
-                gaussians._beta.data.clamp_(min=-4.0, max=2.0)
+                gaussians._beta.data.clamp_(min=BETA_RAW_MIN, max=BETA_RAW_MAX)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
@@ -475,17 +475,24 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             print("\n[ITER {}] [BETA] total={} | beta<0.1: {} ({:.3f}%) | beta min/mean/max = {:.4f}/{:.4f}/{:.4f}".format(
                 iteration, _n, _low, 100.0 * _low / max(_n, 1),
                 _beta.min().item(), _beta.mean().item(), _beta.max().item()))
-            # [BETA-TECHO] topados en el clamp SUPERIOR (run73). Leccion de
-            # docs/techo_beta_clamp_superior.html: para saber si un techo MUERDE hay que
+            # [BETA-TECHO] topados en los clamps de _beta. Leccion de
+            # docs/techo_beta_clamp_superior.html: para saber si un clamp MUERDE hay que
             # CONTAR topados, no mirar solo 'beta max' (que es un max sobre millones de
-            # muestras y satura con que UN solo splat llegue). Sin esto, subir el techo de
-            # 29.556 a 60 no se podria evaluar. beta>29.556 = cuantos superan el techo VIEJO.
+            # muestras y satura con que UN solo splat llegue).
+            # FIX 2026-08-17: los umbrales estaban CONGELADOS en los valores de run73
+            # (_beta max 2.7081 -> beta 60). Al revertir run73 el clamp real volvio a 2.0
+            # y este print quedo midiendo contra un techo inexistente -> "topados 0.0000%"
+            # SIEMPRE, pasase lo que pasase. Ahora se derivan de BETA_RAW_MIN/MAX, que son
+            # las MISMAS constantes que aplica el clamp. Se cuentan los DOS extremos: el
+            # suelo delata un eventual retorno del trinquete de beta (run65/66).
             _braw = scene.gaussians._beta.detach().flatten()
-            _ceil_raw = 2.7081                                  # max clamp -> beta_techo ~ 60
-            _top = int((_braw >= _ceil_raw - 1e-3).sum().item())
-            _over_old = int((_beta > 29.556).sum().item())
-            print("[ITER {}] [BETA-TECHO] techo _beta={:.4f} (beta~60) | topados: {} ({:.4f}%) | beta>29.556 (techo viejo 4e2): {} ({:.4f}%)".format(
-                iteration, _ceil_raw, _top, 100.0 * _top / max(_n, 1), _over_old, 100.0 * _over_old / max(_n, 1)))
+            _top = int((_braw >= BETA_RAW_MAX - 1e-4).sum().item())
+            _bot = int((_braw <= BETA_RAW_MIN + 1e-4).sum().item())
+            print("[ITER {}] [BETA-TECHO] clamp _beta=[{:.4f}, {:.4f}] -> beta=[{:.4f}, {:.4f}] | "
+                  "topados TECHO: {} ({:.4f}%) | topados SUELO: {} ({:.4f}%)".format(
+                      iteration, BETA_RAW_MIN, BETA_RAW_MAX,
+                      beta_from_raw(BETA_RAW_MIN), beta_from_raw(BETA_RAW_MAX),
+                      _top, 100.0 * _top / max(_n, 1), _bot, 100.0 * _bot / max(_n, 1)))
 
         # [CLAMP] verifica que el techo de escala se aplique de verdad (%topados > 0)
         # y con qué factor. Detecta el fallo de run65: script "small clamp" sin la env

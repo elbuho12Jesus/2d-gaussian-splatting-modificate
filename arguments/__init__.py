@@ -189,6 +189,19 @@ class OptimizationParams(ParamGroup):
         # criterio jamás se cumple = CÓDIGO MUERTO (caso run14, N=50 con reset cada 30).
         # Solo afecta al camino clásico (el MCMC usa --mcmc_dead_sustain).
         self.classic_prune_sustain = 0
+        # --- Reparto de OPACIDAD al crear hijos en clone/split (solo CLÁSICO) ---
+        # "linear" (default) = comportamiento HISTÓRICO de todos los runs ≤ run75:
+        #     split -> cada hijo α/N ; clone -> el clon nace con α/2 y el padre se
+        #     queda con α entera. Ninguno conserva la transmitancia: el split ACLARA
+        #     ((1-α/2)² > 1-α) y el clone OSCURECE ((1-α)(1-α/2) < 1-α).
+        # "transmittance" = FIX: las K instancias resultantes reciben
+        #     α' = 1-(1-α)^(1/K)  ⇒  (1-α')^K = 1-α EXACTO (y en clone el padre
+        #     también baja a α'). Es la MISMA regla que relocate_gs/add_new_gs ya
+        #     usan en el camino MCMC desde el fix oficial de _update_params; era la
+        #     única de las 4 rutas de creación que seguía con el reparto lineal.
+        # Se deja en "linear" por defecto para que el historial siga siendo
+        # reproducible; el A/B se activa con --densify_opacity_mode transmittance.
+        self.densify_opacity_mode = "linear"
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

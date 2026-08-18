@@ -23,8 +23,42 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=67                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
-# ═══ run67 = ANCLA run26 (clásico sano) + UN SOLO DELTA: el fix del trinquete de β ═══
+RUN=79                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+# ═══════════════════════════════════════════════════════════════════════════
+# run79 = ANCLA run67 + UN SOLO DELTA: --densify_opacity_mode transmittance
+# ═══════════════════════════════════════════════════════════════════════════
+# ANCLA = run67 (MEJOR CLÁSICO: 20.6684 / 0.5811 / 0.3675 honesto, train@30k 23.63,
+# 4.875M splats). TODO lo demás es idéntico (regs=0, prune_sustain 25, reset 3000,
+# CULL_SUBPIXEL=1, β en [-4,2]).
+#
+# QUÉ CAMBIA (auditoría de β/densificación, 2026-08-17): de las 4 rutas de creación de
+# splats, relocate_gs y add_new_gs (MCMC) ya usaban la regla oficial de CONSERVACIÓN DE
+# TRANSMITANCIA α' = 1-(1-α)^(1/K), pero clone/split (CLÁSICO) se habían quedado con el
+# reparto LINEAL, que es la misma fórmula que en su día se identificó como bug en MCMC
+# ("MCMC sobre-densidad: usaban α*0.5 → fix oficial"). El reparto lineal NO conserva la luz:
+#   · split: 2 hijos con α/2  → (1-α/2)² > 1-α          ⇒ cada split ACLARA
+#   · clone: clon con α/2 y el padre SE QUEDA con α     ⇒ cada clone OSCURECE
+# Con α=0.6: split correcto = 0.368 por hijo, no 0.30 (T 0.40 vs 0.49 = +22% de luz).
+# El sesgo se aplica en CADA densificación (145 pasos entre iter 500 y 15000) y acumula.
+#
+# HIPÓTESIS: parte del "óptimo plano" de run67 (run68-75: ni escala, ni ritmo de poda,
+# ni techo de β lo movían) es que la densificación estaba desajustando el brillo a cada
+# paso. Es el único mecanismo estructural del clásico que quedaba sin auditar.
+#
+# VERIFICACIÓN EN EL LOG (nuevos prints, ver también DEBUG abajo):
+#   [DENSIFY-OPA] al arrancar  → debe decir modo = 'transmittance'
+#   [DENSIFY-SPLIT n=...] / [DENSIFY-CLONE n=...] en cada densificación → el campo
+#      "T: x -> y (err +z%)" debe dar err ≈ +0.00% (en modo linear da err > 0 en split
+#      y < 0 en clone), y "d_beta_max" debe ser 0.00e+00 EXACTO (β se hereda tal cual =
+#      el trinquete de run65/66 sigue muerto).
+#
+# ⚠ REQUIERE recompilar el rasterizer SOLO si se quiere el fix de dL_dbeta (término de
+#   fondo). Ese fix es BIT-EXACTO con fondo negro (verificado contra diferencias finitas:
+#   mismos dígitos), así que flowers NO cambia y el A/B contra run67 sigue siendo limpio
+#   se recompile o no:
+#   docker compose exec surfel_env pip install --force-reinstall --no-deps /workspace/submodules/diff-surfel-rasterization
+#
+# ═══ (histórico) run67 = ANCLA run26 (clásico sano) + UN SOLO DELTA: fix del trinquete de β ═══
 # Deltas vs run66 (los 2 primeros REVIERTEN la regresión medida, no son experimento):
 #   · OPACITY_REG 0.02→0 y SCALE_REG 0.06→0  = reguladores de run25/26. A/B local midió
 #     que scale_reg 0.06 cuesta 1.68 dB y opacity_reg 0.02 otros 0.14 dB en clásico.
@@ -65,6 +99,12 @@ LAMBDA_NORMAL=0.05            # reg de consistencia de normales
 OPACITY_REG=0                 # OFF = run25/26. En clásico la L1 cuesta PSNR (A/B local: 0.02 -> -0.14 dB)
 SCALE_REG=0                   # OFF = run25/26. A/B local: 0.06 cuesta -1.68 dB en clásico
 ITERATIONS=30000
+# ═══ EL DELTA DE run79 ═══ "linear" = histórico (todos los runs ≤75) · "transmittance" = FIX.
+# Sesgo del modo linear MEDIDO en el smoke test (bonsai, prints [DENSIFY-*]):
+#   SPLIT  T 0.247 -> 0.397 = +61% de luz  (ACLARA: 2 hijos con α/2)
+#   CLONE  T 0.225 -> 0.154 = −31% de luz  (OSCURECE: clon α/2 + padre con α entera)
+# En modo transmittance ambos dan err +0.00%.
+DENSIFY_OPACITY_MODE=transmittance
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
@@ -88,4 +128,13 @@ python train.py -s Datasets/${DATASET} \
     --opacity_reg $OPACITY_REG \
     --scale_reg $SCALE_REG \
     --classic_prune_sustain $PRUNE_SUSTAIN \
+    --densify_opacity_mode $DENSIFY_OPACITY_MODE \
     2>&1 | tee $LOG
+
+# ─── QUÉ MIRAR EN EL LOG (verificación de que los fixes están activos) ───
+#   grep "DENSIFY-OPA"   $LOG   → modo = 'transmittance'
+#   grep "DENSIFY-SPLIT" $LOG   → err ≈ +0.00% (en linear daba ~+61%)
+#   grep "DENSIFY-CLONE" $LOG   → err ≈ +0.00% (en linear daba ~−31%)
+#   grep "d_beta_max"    $LOG   → SIEMPRE 0.00e+00 (β se hereda: trinquete muerto)
+#   grep "BETA-TECHO"    $LOG   → clamp [-4,2] → beta [0.0733, 29.5562] + topados techo/suelo
+#   grep "PRUNE-WORLD"   $LOG   → diagnóstico del prune por tamaño-mundo (hoy MUERTO)

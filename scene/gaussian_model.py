@@ -23,6 +23,25 @@ from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Rango del parametro CRUDO de beta. beta = 4*exp(_beta) (activacion oficial
+# beta-splatting), asi que [-4, 2] -> beta en [0.0733, 29.5562].
+# FUENTE UNICA: la usan get_beta (forward), el clamp de train.py y el print
+# [BETA-TECHO]. Antes estaban HARDCODEADAS en 3 sitios y al revertir run73 se
+# quedo el print midiendo contra un techo (2.7081) que ya no existia -> reportaba
+# "topados: 0.0000%" SIEMPRE, que es justo el fallo silencioso tipo run65 que ese
+# print debia detectar. Para mover el techo, cambiar SOLO aqui.
+# ─────────────────────────────────────────────────────────────────────────────
+BETA_RAW_MIN = -4.0
+BETA_RAW_MAX = 2.0
+BETA_SCALE = 4.0                       # beta = BETA_SCALE * exp(_beta)
+
+
+def beta_from_raw(raw):
+    """Valor activado de beta a partir del parametro crudo (mismo mapeo que get_beta)."""
+    return BETA_SCALE * math.exp(raw)
+
+
 class GaussianModel:
 
     def setup_functions(self):
@@ -90,6 +109,11 @@ class GaussianModel:
         self.setup_functions()
 
     def capture(self):
+        # FIX 2026-08-17: faltaban _beta y low_opacity_counter. Un checkpoint .pth
+        # guardado sin _beta se restauraba con torch.empty(0) -> el optimizer se
+        # montaba con un tensor vacio en el grupo "beta" y el entrenamiento reanudado
+        # quedaba roto (o crasheaba en el primer render). Solo afectaba a
+        # --start_checkpoint/--checkpoint_iterations, que ningun run del historial usa.
         return (
             self.active_sh_degree,
             self._xyz,
@@ -99,30 +123,39 @@ class GaussianModel:
             self._scaling,
             self._rotation,
             self._opacity,
+            self._beta,
             self.max_radii2D,
             self.xyz_gradient_accum,
             self.denom,
+            self.low_opacity_counter,
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
         )
 
     def restore(self, model_args, training_args):
-        (self.active_sh_degree,
-        self._xyz,
-        self._features_dc,
-        self._features_rest,
-        self._sb_params,
-        self._scaling,
-        self._rotation,
-        self._opacity,
-        self.max_radii2D,
-        xyz_gradient_accum,
-        denom,
-        opt_dict,
-        self.spatial_lr_scale) = model_args
+        if len(model_args) == 13:
+            # Checkpoint ANTIGUO (sin _beta ni low_opacity_counter). Se acepta por
+            # retro-compatibilidad, avisando: beta se reinicializa al neutro (=4.0).
+            print("[CHKPT] WARNING: checkpoint antiguo sin '_beta' -> beta se "
+                  "reinicializa al neutro (4.0). Las betas entrenadas se han perdido.")
+            (self.active_sh_degree,
+            self._xyz, self._features_dc, self._features_rest, self._sb_params,
+            self._scaling, self._rotation, self._opacity,
+            self.max_radii2D, xyz_gradient_accum, denom, opt_dict,
+            self.spatial_lr_scale) = model_args
+            self._beta = nn.Parameter(torch.zeros(
+                (self._xyz.shape[0], 1), dtype=torch.float, device="cuda").requires_grad_(True))
+            low_opacity_counter = torch.zeros((self._xyz.shape[0],), device="cuda")
+        else:
+            (self.active_sh_degree,
+            self._xyz, self._features_dc, self._features_rest, self._sb_params,
+            self._scaling, self._rotation, self._opacity, self._beta,
+            self.max_radii2D, xyz_gradient_accum, denom, low_opacity_counter, opt_dict,
+            self.spatial_lr_scale) = model_args
         self.training_setup(training_args)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.denom = denom
+        self.low_opacity_counter = low_opacity_counter
         self.optimizer.load_state_dict(opt_dict)
 
     @property
@@ -181,12 +214,10 @@ class GaussianModel:
     
     @property
     def get_beta(self):
-        # min -4.0 (igualado con el clamp de train.py:399; el -6.0 previo era holgura
-        # muerta: train.py proyecta _beta a [-4,2] cada iter, nunca baja de -4).
-        # max 2.7081 (run73): beta_techo 4*e^2.7081 = 60 (viejo 4*e^2 = 29.556).
-        # Los DOS clamps deben moverse juntos o el forward recorta a 29.556 (NO-OP).
-        b = self._beta.clamp(min=-4.0, max=2.0)
-        return (4.0 * torch.exp(b)).contiguous()
+        # Rango en BETA_RAW_MIN/MAX (constantes del modulo, fuente unica compartida
+        # con el clamp de train.py y el print [BETA-TECHO]). [-4,2] -> beta [0.0733, 29.5562].
+        b = self._beta.clamp(min=BETA_RAW_MIN, max=BETA_RAW_MAX)
+        return (BETA_SCALE * torch.exp(b)).contiguous()
 
     @property
     def get_sb_params(self):
@@ -247,6 +278,13 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.beta_densify_threshold = getattr(training_args, "beta_densify_threshold", 0.0)
         self.beta_densify_mode = getattr(training_args, "beta_densify_mode", "split_wide")
+        # Regla de reparto de opacidad en clone/split (camino CLASICO). Ver
+        # _split_opacity/_clone_opacity. "linear" = historico (run14..run75).
+        self.densify_opacity_mode = getattr(training_args, "densify_opacity_mode", "linear")
+        print("[DENSIFY-OPA] modo de reparto de opacidad en clone/split = '{}'  ({})".format(
+            self.densify_opacity_mode,
+            "conserva transmitancia: a' = 1-(1-a)^(1/K)" if self.densify_opacity_mode == "transmittance"
+            else "reparto lineal a/K (historico, NO conserva transmitancia)"))
 
         l = [
             {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
@@ -389,8 +427,19 @@ class GaussianModel:
         prop_names = [p.name for p in plydata.elements[0].properties]
         if "beta" in prop_names:
             beta = np.asarray(plydata.elements[0]["beta"])[..., np.newaxis]
+            _b = torch.tensor(beta, dtype=torch.float)
+            _ba = BETA_SCALE * torch.exp(_b.clamp(min=BETA_RAW_MIN, max=BETA_RAW_MAX))
+            print("[LOAD] beta LEIDA del ply | raw min/mean/max = {:.4f}/{:.4f}/{:.4f} "
+                  "-> beta activada min/mean/max = {:.4f}/{:.4f}/{:.4f} | beta<0.1: {} ({:.3f}%)".format(
+                      _b.min().item(), _b.mean().item(), _b.max().item(),
+                      _ba.min().item(), _ba.mean().item(), _ba.max().item(),
+                      int((_ba < 0.1).sum().item()), 100.0 * float((_ba < 0.1).float().mean().item())))
         else:
-            beta = np.ones((xyz.shape[0], 1), dtype=np.float32)
+            # FIX 2026-08-17: el fallback era 1.0 CRUDO -> beta = 4*e^1 = 10.87, que NO
+            # es el neutro. El valor de inicializacion del modelo es _beta = 0 (beta = 4).
+            beta = np.zeros((xyz.shape[0], 1), dtype=np.float32)
+            print("[LOAD] WARNING: ply SIN campo 'beta' (formato antiguo) -> se usa el "
+                  "neutro _beta=0 (beta=4.0)")
         self._beta = nn.Parameter(torch.tensor(beta, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self.active_sh_degree = self.max_sh_degree
@@ -509,7 +558,68 @@ class GaussianModel:
         else:
             self.low_opacity_counter = torch.zeros((n_total,), device="cuda")
 
+    def _densify_opacity(self, alpha, K):
+        """Opacidad de cada una de las K instancias resultantes de un clone/split.
+
+        modo "transmittance" (FIX 2026-08-17): a' = 1-(1-a)^(1/K) => (1-a')^K = 1-a,
+            es decir las K instancias juntas dejan pasar EXACTAMENTE la misma luz que
+            la original. Es la regla del beta-splatting oficial (_update_params), la
+            que relocate_gs/add_new_gs ya usan en el camino MCMC.
+        modo "linear" (historico): a/K. NO conserva transmitancia -> el split aclara
+            y el clone (que ademas dejaba el padre intacto) oscurece.
+        """
+        if self.densify_opacity_mode == "transmittance":
+            a = alpha.clamp(min=2e-3, max=1.0 - 1e-3)
+            return (1.0 - torch.pow(1.0 - a, 1.0 / float(K))).clamp(min=5e-3, max=1.0 - 1e-3)
+        return alpha / float(K)
+
+    @torch.no_grad()
+    def _densify_report(self, tag, beta_src, beta_new, alpha_src, alpha_new, K,
+                        parent_kept_alpha=None):
+        """Verificacion en el log de los DOS invariantes de la creacion de hijos:
+
+        1) BETA se HEREDA TAL CUAL (fix del trinquete, run67). `d_beta_max` debe ser
+           0.00e+00 EXACTO. Si alguna vez vuelve a aparecer un reparto de beta (restar
+           log(N) o similar) este numero deja de ser cero y se ve en el log al instante.
+        2) TRANSMITANCIA: T_padre = 1-a  vs  T_hijos = (1-a')^K. En modo transmittance
+           el error relativo debe ser ~0; en modo linear se ve el sesgo (signo incluido:
+           err>0 = los hijos dejan pasar MAS luz = aclara).
+        """
+        if os.environ.get("DEBUG_DENSIFY", "1") == "0" or beta_src.numel() == 0:
+            return
+        d_beta = (beta_new.view(-1)[:beta_src.numel()] - beta_src.view(-1)).abs().max().item()
+        b_act = BETA_SCALE * torch.exp(beta_src.clamp(min=BETA_RAW_MIN, max=BETA_RAW_MAX))
+        t_src = (1.0 - alpha_src).clamp(min=1e-8)
+        if parent_kept_alpha is None:
+            # Las K instancias resultantes tienen todas alpha_new (split: el padre se
+            # poda; clone+transmittance: el padre tambien baja a alpha_new).
+            t_new = torch.pow((1.0 - alpha_new).clamp(min=1e-8), float(K))
+        else:
+            # El padre SIGUE VIVO con su opacidad original (clone en modo linear):
+            # la luz que atraviesa el par es (1-a_padre)*(1-a_clon)^(K-1).
+            t_new = ((1.0 - parent_kept_alpha).clamp(min=1e-8)
+                     * torch.pow((1.0 - alpha_new).clamp(min=1e-8), float(K - 1)))
+        # err AGREGADO = (suma de luz que dejan pasar los hijos) / (la del padre) - 1.
+        # NO se promedia el error relativo por splat: con alpha->1 el denominador tiende
+        # a 0 y la media de ratios explota (daba +214% donde el sesgo real es +58%).
+        err = (t_new.mean() / t_src.mean() - 1.0).item()
+        err_med = ((t_new - t_src) / t_src).median().item()
+        print("[DENSIFY-{} n={}] opa modo={} K={} | a_padre={:.4f} -> a_hijo={:.4f} "
+              "(lineal daria {:.4f}) | T: {:.4f} -> {:.4f} (err {:+.2%} agregado, "
+              "{:+.2%} mediana) | beta_padre min/mean/max={:.3f}/{:.3f}/{:.3f} "
+              "d_beta_max={:.2e}".format(
+                  tag.upper(), beta_src.shape[0], self.densify_opacity_mode, K,
+                  alpha_src.mean().item(), alpha_new.mean().item(),
+                  (alpha_src / float(K)).mean().item(),
+                  t_src.mean().item(), t_new.mean().item(), err, err_med,
+                  b_act.min().item(), b_act.mean().item(), b_act.max().item(), d_beta),
+              flush=True)
+
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+        # El bloque de posiciones de abajo crea EXACTAMENTE 2 hijos (xyz ± delta·v1)
+        # mientras el resto de atributos usa .repeat(N,1): con N != 2 los tensores no
+        # cuadran. Assert explicito en vez de un shape mismatch a 200 lineas de aqui.
+        assert N == 2, f"densify_and_split solo soporta N=2 (recibido N={N})"
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
@@ -569,10 +679,15 @@ class GaussianModel:
         )
         new_rotation = self._rotation[selected_pts_mask].repeat(N,1)
         new_features_dc = self._features_dc[selected_pts_mask].repeat(N,1,1)
-        new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)        
-        # ✅ DBS-style split: alpha is evenly divided
+        new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)
+        # Reparto de opacidad entre los N hijos (el padre se poda al final).
+        #   "linear"        (historico): a/N  -> (1-a/N)^N > 1-a  => cada split ACLARA.
+        #   "transmittance" (FIX):  1-(1-a)^(1/N) -> (1-a')^N = 1-a EXACTO.
+        # Es la misma regla que relocate_gs/add_new_gs ya usan en el camino MCMC
+        # (fix oficial beta_model._update_params); clone/split se habian quedado con
+        # el reparto lineal, que es la version que alli se identifico como bug.
         alpha = self.get_opacity[selected_pts_mask]
-        alpha_new = alpha / N
+        alpha_new = self._densify_opacity(alpha, N)
         new_opacity = self.inverse_opacity_activation(alpha_new).repeat(N, 1)
 
         # FIX 2026-07-20 (trinquete de beta, run67): ANTES restaba math.log(N), lo que
@@ -586,6 +701,9 @@ class GaussianModel:
         # Detalle: docs/beta_trinquete_split_clasico.html
         new_beta = self._beta[selected_pts_mask].repeat(N, 1)
         new_sb_params = self._sb_params[selected_pts_mask].repeat(N, 1, 1)
+
+        self._densify_report("split", self._beta[selected_pts_mask], new_beta,
+                             alpha, alpha_new, K=N)
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_beta, new_scaling, new_rotation, new_sb_params)
 
@@ -602,10 +720,16 @@ class GaussianModel:
         new_features_dc = self._features_dc[selected_pts_mask]
         new_features_rest = self._features_rest[selected_pts_mask]
 
-        # ✅ DBS-style clone: preserve transmittance
+        # Reparto de opacidad. El clone deja VIVO al padre => hay K+1 = 2 instancias.
+        #   "linear"        (historico): el clon nace con a/2 y el padre SE QUEDA con a
+        #      -> (1-a)(1-a/2) < 1-a  => cada clone OSCURECE (y era asimetrico: la
+        #         mitad de la masa se aplicaba solo a una de las dos instancias).
+        #   "transmittance" (FIX): AMBOS (padre y clon) pasan a a' = 1-(1-a)^(1/2)
+        #      -> (1-a')^2 = 1-a EXACTO. Misma regla que relocate_gs/add_new_gs, que
+        #         tambien reescriben la opacidad del src.
         alpha = self.get_opacity[selected_pts_mask]      # (0,1)
-        K = 1  # clone crea 1 copia adicional por punto
-        alpha_new = alpha / (K + 1)
+        K = 1  # clone crea 1 copia adicional por punto -> K+1 instancias
+        alpha_new = self._densify_opacity(alpha, K + 1)
 
         new_opacities = self.inverse_opacity_activation(alpha_new)
 
@@ -613,6 +737,18 @@ class GaussianModel:
         new_scaling = self._scaling[selected_pts_mask]
         new_rotation = self._rotation[selected_pts_mask]
         new_sb_params = self._sb_params[selected_pts_mask]
+
+        # En modo linear el padre NO cambia de opacidad -> hay que decirselo al reporte
+        # o mediria una transmitancia que no ocurre (asumiria que el padre baja tambien).
+        self._densify_report("clone", self._beta[selected_pts_mask], new_beta,
+                             alpha, alpha_new, K=K + 1,
+                             parent_kept_alpha=None if self.densify_opacity_mode == "transmittance" else alpha)
+
+        if self.densify_opacity_mode == "transmittance":
+            # El padre tambien baja a alpha_new (si no, la pareja padre+clon seria
+            # mas opaca que el padre original). ANTES del postfix, que reasigna _opacity.
+            with torch.no_grad():
+                self._opacity[selected_pts_mask] = new_opacities.detach()
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_beta, new_scaling, new_rotation, new_sb_params)
 
@@ -675,6 +811,22 @@ class GaussianModel:
             big_points_vs = self.max_radii2D > max_screen_size
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
+            # DIAGNOSTICO (no cambia comportamiento): este prune por tamano-mundo esta
+            # MUERTO cuando scale_clamp_factor <= 0.1, porque get_scaling ya viene
+            # clampada a scale_clamp_factor*extent y el criterio pide ESTRICTAMENTE
+            # mayor que 0.1*extent -> nunca se cumple (en los logs: world=0 siempre).
+            # El 2DGS original no clampa, asi que alli si actua. Se imprime cuantos
+            # splats caerian usando la escala CRUDA (sin clamp) para saber que se pierde.
+            if _dbg and self.spatial_lr_scale > 0:
+                raw_max = self.scaling_activation(self._scaling).max(dim=1).values
+                n_raw = int((raw_max > 0.1 * extent).sum())
+                print(f"[PRUNE-WORLD iter={iteration}] criterio s>0.1*extent "
+                      f"({0.1*extent:.4f}) | con escala CLAMPADA (la que se usa): "
+                      f"{int(big_points_ws.sum())} | con escala CRUDA (2DGS original): "
+                      f"{n_raw} ({100.0*n_raw/max(raw_max.numel(),1):.3f}%) | "
+                      f"clamp={self.scale_clamp_factor:.3f}*extent -> "
+                      f"{'MUERTO (clamp <= criterio)' if self.scale_clamp_factor <= 0.1 else 'activo'}",
+                      flush=True)
 
         if _dbg:
             n_before = self.get_xyz.shape[0]

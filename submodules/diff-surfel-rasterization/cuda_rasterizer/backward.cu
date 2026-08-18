@@ -418,7 +418,28 @@ renderCUDA(
 			// Beta kernel backward extensions (STABLE)
 			// ===============================
 
-			// FIX #2: el umbral beta<0.1 solo debe saltar el gradiente de BETA
+			// ∂α/∂rho = -opa * beta * (1 - rho)^{beta - 1}
+
+			// Stable beta-splatting backward (gsplat-style)
+			// dα/dρ = -β * α / (1 - ρ)
+			float d_alpha_d_rho = (-beta_j) * alpha / one_minus;
+
+			// Account for fact that alpha also influences how much of
+			// the background color is added if nothing left to blend
+			float bg_dot_dpixel = 0;
+			for (int i = 0; i < C; i++)
+				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
+			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
+
+			// FIX 2026-08-17 (termino de fondo en dL_dbeta): este bloque estaba ANTES
+			// de sumar bg_dot_dpixel a dL_dalpha, asi que beta era el UNICO parametro
+			// cuyo gradiente ignoraba la contribucion del color de fondo (opacidad y
+			// geometria si la incluyen; dL_d_rho la incluye desde el FIX #3). Con fondo
+			// NEGRO el termino es exactamente 0.0 -> bit-exacto con todos los runs del
+			// historial (flowers/bonsai usan white_background=False). Con fondo BLANCO
+			// el gradiente de beta salia con el SIGNO INVERTIDO (verificado contra
+			// diferencias finitas: analitico -4.76e-04 vs verdadero +1.42e-04).
+			// FIX #2 (run9): el umbral beta<0.1 solo debe saltar el gradiente de BETA
 			// (para evitar NaN), NO la geometría/opacidad. Antes el `continue`
 			// saltaba TODO el resto del cuerpo del bucle -> congelaba posición/
 			// escala/rotación/opacidad de esos splats (ver doc backward_*).
@@ -432,19 +453,6 @@ renderCUDA(
 
 				atomicAdd(&dL_dbeta[global_id], grad_beta);
 			}
-
-			// ∂α/∂rho = -opa * beta * (1 - rho)^{beta - 1}
-			
-			// Stable beta-splatting backward (gsplat-style)
-			// dα/dρ = -β * α / (1 - ρ)
-			float d_alpha_d_rho = (-beta_j) * alpha / one_minus;
-
-			// Account for fact that alpha also influences how much of
-			// the background color is added if nothing left to blend
-			float bg_dot_dpixel = 0;
-			for (int i = 0; i < C; i++)
-				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
-			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 			// FIX #3: dL_d_rho se calcula DESPUES del termino de fondo. La rama
 			// rho2d escribe este gradiente en dL_dmean2D, y compute_transmat_aabb
