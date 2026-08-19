@@ -3,8 +3,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Deben coincidir con train_server.sh.
 DATASET=flowers          # carpeta en Datasets/
-RUN=79                    # run79 = CLÁSICO, ancla run67 + UN DELTA: --densify_opacity_mode transmittance
-                          # (clone/split conservan transmitancia, como relocate/add_new del MCMC)
+RUN=80                    # run80 = CLÁSICO, ancla run79 + UN DELTA: --classic_prune_world_raw
+                          # (el prune por tamaño-mundo vuelve a morder: escala CRUDA, como el 2DGS original)
 ITER=30000               # iteración (checkpoint) a renderizar (el test pica ~30k)
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}

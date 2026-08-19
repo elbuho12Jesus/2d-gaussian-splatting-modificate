@@ -23,10 +23,34 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
 DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=79                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+RUN=80                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
 # ═══════════════════════════════════════════════════════════════════════════
-# run79 = ANCLA run67 + UN SOLO DELTA: --densify_opacity_mode transmittance
+# run80 = ANCLA run79 + UN SOLO DELTA: --classic_prune_world_raw
 # ═══════════════════════════════════════════════════════════════════════════
+# ANCLA = run79 (20.7385 / 0.5767 / 0.3726 honesto, in-train 20.8107, train@30k 23.40,
+# 3.716M splats). Se mantiene sobre run79 y NO sobre run67 para que el A/B siga siendo
+# de UN SOLO DELTA conservando los fixes de corrección ya medidos (transmitancia).
+#
+# QUÉ CAMBIA: el prune por TAMAÑO-MUNDO del clásico estaba MUERTO. El criterio
+# `s > 0.1·extent` se evaluaba sobre `get_scaling`, que YA viene clampada a
+# `scale_clamp_factor·extent` = exactamente 0.1·extent con el default ⇒ la comparación
+# estricta nunca se cumplía (en TODOS los logs del historial: `world=0`). El 2DGS
+# original no clampa, así que allí ese prune sí actúa. Con --classic_prune_world_raw el
+# criterio pasa a evaluarse sobre la escala CRUDA (activación sin clamp) = fiel al original.
+#
+# MASA AFECTADA (medida en run79, print [PRUNE-WORLD]): 52.018 splats = 1.402%. Es tres
+# órdenes de magnitud más que los clamps ya descartados (β: 0.0002%) → el único pendiente
+# de la auditoría con masa suficiente para mover la métrica. Respaldo del [CLAMP] de run79:
+# 1.344% de componentes topadas y `s_raw max` 3.21 contra un techo de 0.4816 (recorte 2.73)
+# → hay gigantes reales debajo del clamp (los del mecanismo de run21).
+#
+# RIESGO CONOCIDO: el clásico ya falla por HUECOS NEGROS (sub-cobertura del fondo rasante)
+# y esos gigantes son justo los surfels del fondo. Podarlos puede limpiar velo o abrir más
+# huecos — es lo que mide el run. Vigilar `dmean(render−gt)`: run79 está en −0.8156
+# (sub-brillante); si el prune abre huecos, se hará MÁS negativo.
+#
+# VERIFICACIÓN EN EL LOG: `[PRUNE-WORLD]` debe decir «escala usada = CRUDA -> ACTIVO» y
+# el `[DENSIFY]` debe mostrar `world=N` con N>0 (histórico: world=0 siempre).
 # ANCLA = run67 (MEJOR CLÁSICO: 20.6684 / 0.5811 / 0.3675 honesto, train@30k 23.63,
 # 4.875M splats). TODO lo demás es idéntico (regs=0, prune_sustain 25, reset 3000,
 # CULL_SUBPIXEL=1, β en [-4,2]).
@@ -104,7 +128,10 @@ ITERATIONS=30000
 #   SPLIT  T 0.247 -> 0.397 = +61% de luz  (ACLARA: 2 hijos con α/2)
 #   CLONE  T 0.225 -> 0.154 = −31% de luz  (OSCURECE: clon α/2 + padre con α entera)
 # En modo transmittance ambos dan err +0.00%.
-DENSIFY_OPACITY_MODE=transmittance
+DENSIFY_OPACITY_MODE=transmittance   # heredado de run79 (fix de corrección, ya medido)
+# ═══ EL DELTA DE run80 ═══ prune por tamaño-mundo sobre la escala CRUDA (2DGS original).
+# Ponerlo a "" (vacío) revierte al comportamiento histórico (prune muerto).
+PRUNE_WORLD_RAW=--classic_prune_world_raw
 
 MODEL=output/m360/${DATASET}_beta_run${RUN}
 LOG=logs/${DATASET}${RUN}.log
@@ -129,6 +156,7 @@ python train.py -s Datasets/${DATASET} \
     --scale_reg $SCALE_REG \
     --classic_prune_sustain $PRUNE_SUSTAIN \
     --densify_opacity_mode $DENSIFY_OPACITY_MODE \
+    $PRUNE_WORLD_RAW \
     2>&1 | tee $LOG
 
 # ─── QUÉ MIRAR EN EL LOG (verificación de que los fixes están activos) ───
@@ -137,4 +165,5 @@ python train.py -s Datasets/${DATASET} \
 #   grep "DENSIFY-CLONE" $LOG   → err ≈ +0.00% (en linear daba ~−31%)
 #   grep "d_beta_max"    $LOG   → SIEMPRE 0.00e+00 (β se hereda: trinquete muerto)
 #   grep "BETA-TECHO"    $LOG   → clamp [-4,2] → beta [0.0733, 29.5562] + topados techo/suelo
-#   grep "PRUNE-WORLD"   $LOG   → diagnóstico del prune por tamaño-mundo (hoy MUERTO)
+#   grep "PRUNE-WORLD"   $LOG   → «escala usada = CRUDA -> ACTIVO, poda N» (antes: MUERTO)
+#   grep "world="        $LOG   → en el [DENSIFY]: world > 0 (histórico: world=0 siempre)

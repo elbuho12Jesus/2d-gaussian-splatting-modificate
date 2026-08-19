@@ -202,6 +202,18 @@ class OptimizationParams(ParamGroup):
         # Se deja en "linear" por defecto para que el historial siga siendo
         # reproducible; el A/B se activa con --densify_opacity_mode transmittance.
         self.densify_opacity_mode = "linear"
+        # --- Prune por TAMAÑO-MUNDO del clásico: escala cruda vs clampada ---
+        # False (default) = comportamiento HISTÓRICO (runs ≤ run79): el criterio
+        #     `s > 0.1·extent` se evalúa sobre `get_scaling`, que YA viene clampada a
+        #     `scale_clamp_factor·extent`. Con el default 0.1 el clamp coincide con el
+        #     umbral y la comparación es ESTRICTAMENTE mayor ⇒ nunca se cumple: el prune
+        #     está MUERTO (en todos los logs: `world=0`). El print [PRUNE-WORLD] lo mide.
+        # True = criterio sobre la escala CRUDA (activación sin clamp), que es lo que hace
+        #     el 2DGS original (no clampa) ⇒ se poda el splat que QUIERE ser gigante aunque
+        #     el rasterizer le recorte la huella. Medido en run79: 52.018 splats (1.402%).
+        # Solo afecta al camino clásico y solo cuando `size_threshold` está activo (tras el
+        # primer opacity_reset), igual que el prune por radio en pantalla.
+        self.classic_prune_world_raw = False
         # ---------------------------------------------------
         super().__init__(parser, "Optimization Parameters")
 

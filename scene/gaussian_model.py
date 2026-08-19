@@ -752,7 +752,8 @@ class GaussianModel:
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_beta, new_scaling, new_rotation, new_sb_params)
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, iteration=None, prune_sustain=0):
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, iteration=None,
+                          prune_sustain=0, prune_world_raw=False):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
@@ -809,7 +810,16 @@ class GaussianModel:
         big_points_ws = None
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size
-            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            # prune_world_raw=False (default histórico): criterio sobre la escala CLAMPADA
+            #   -> MUERTO cuando scale_clamp_factor <= 0.1 (ver diagnóstico abajo).
+            # prune_world_raw=True (run80): criterio sobre la escala CRUDA, como el 2DGS
+            #   original, que no clampa -> poda el splat que QUIERE ser gigante aunque el
+            #   rasterizer le recorte la huella. En run79 eso son 52.018 splats (1.402%).
+            if prune_world_raw:
+                world_scale = self.scaling_activation(self._scaling).max(dim=1).values
+            else:
+                world_scale = self.get_scaling.max(dim=1).values
+            big_points_ws = world_scale > 0.1 * extent
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
             # DIAGNOSTICO (no cambia comportamiento): este prune por tamano-mundo esta
             # MUERTO cuando scale_clamp_factor <= 0.1, porque get_scaling ya viene
@@ -820,13 +830,17 @@ class GaussianModel:
             if _dbg and self.spatial_lr_scale > 0:
                 raw_max = self.scaling_activation(self._scaling).max(dim=1).values
                 n_raw = int((raw_max > 0.1 * extent).sum())
+                n_clamped = int((self.get_scaling.max(dim=1).values > 0.1 * extent).sum())
+                if prune_world_raw:
+                    estado = "CRUDA (2DGS original) -> ACTIVO, poda {}".format(n_raw)
+                else:
+                    estado = "CLAMPADA -> {}".format(
+                        "MUERTO (clamp <= criterio)" if self.scale_clamp_factor <= 0.1 else "activo")
                 print(f"[PRUNE-WORLD iter={iteration}] criterio s>0.1*extent "
-                      f"({0.1*extent:.4f}) | con escala CLAMPADA (la que se usa): "
-                      f"{int(big_points_ws.sum())} | con escala CRUDA (2DGS original): "
+                      f"({0.1*extent:.4f}) | escala usada = {estado} | "
+                      f"con CLAMPADA caerian: {n_clamped} | con CRUDA caerian: "
                       f"{n_raw} ({100.0*n_raw/max(raw_max.numel(),1):.3f}%) | "
-                      f"clamp={self.scale_clamp_factor:.3f}*extent -> "
-                      f"{'MUERTO (clamp <= criterio)' if self.scale_clamp_factor <= 0.1 else 'activo'}",
-                      flush=True)
+                      f"clamp={self.scale_clamp_factor:.3f}*extent", flush=True)
 
         if _dbg:
             n_before = self.get_xyz.shape[0]
