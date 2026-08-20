@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El prune por tamaño-mundo: qué hacía con los splats gigantes y qué hará con la escala cruda</title>
+<style>
+  :root{--bg:#0f1117;--panel:#171a23;--panel2:#1e222e;--ink:#e6e8ee;--muted:#9aa3b2;--accent:#6ea8fe;--accent2:#7ee787;--warn:#ffb454;--danger:#ff7b72;--code:#c9d1d9;--line:#2a2f3c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.65}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 24px 96px}
+  h1{font-size:1.9rem;margin:.2em 0 .1em;line-height:1.2}
+  h2{font-size:1.45rem;margin:2.0em 0 .5em;padding-top:.4em;border-top:1px solid var(--line)}
+  h3{font-size:1.12rem;margin:1.5em 0 .4em;color:var(--accent)}
+  .sub{color:var(--muted);font-size:1.02rem;margin-top:0}
+  p{margin:.6em 0}
+  code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#0b0d13;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--code)}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow:auto;font-size:.82rem}
+  pre code{background:none;border:none;padding:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0}
+  .tag{display:inline-block;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .ok{color:var(--accent2);border-color:#2c5} .bad{color:var(--danger);border-color:#a33} .warn{color:var(--warn);border-color:#a72}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.92rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#10131b;color:var(--muted);font-weight:600}
+  tr:nth-child(even) td{background:#12151d}
+  .note{border-left:3px solid var(--accent);padding:.4em 0 .4em 14px;color:var(--muted);margin:14px 0}
+  .danger-box{border-left:3px solid var(--danger)} .ok-box{border-left:3px solid var(--accent2)} .warn-box{border-left:3px solid var(--warn)}
+  ul{margin:.5em 0;padding-left:1.2em} li{margin:.3em 0}
+  .eq{background:#0b0d13;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0;font-family:"JetBrains Mono",monospace;font-size:.95rem;color:var(--accent2);text-align:center}
+  .meta{color:var(--muted);font-size:.85rem}
+  svg{max-width:100%;height:auto;display:block;margin:10px auto}
+  figcaption{color:var(--muted);font-size:.85rem;text-align:center;margin-top:-2px;margin-bottom:8px}
+  b.hi{color:var(--accent2)} b.lo{color:var(--danger)} b.wr{color:var(--warn)}
+  .verdict{background:linear-gradient(180deg,#1d2430,#171a23);border:1px solid #3a4a5c;border-left:5px solid var(--warn);border-radius:12px;padding:20px 22px;margin:20px 0}
+  .verdict h3{margin-top:0;color:var(--warn)}
+  .big{font-size:1.5rem;font-family:"JetBrains Mono",monospace;color:var(--warn)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>El <b>prune por tamaño-mundo</b>: qué hacía con los splats gigantes y qué hará con la escala cruda</h1>
+<p class="sub">Por qué en todos los logs del historial sale <code>world=0</code>, quiénes son realmente esos surfels gigantes
+(medido sobre el ply de <b>run79</b>) y qué cambia el flag <code>--classic_prune_world_raw</code> de <b>run80</b>.
+Doc de acompañamiento del run que está corriendo.</p>
+<p class="meta">2026-08-19 · flowers, camino CLÁSICO · datos: <code>logs/flowers79.log</code> + <code>point_cloud.ply</code> de run79 (3.716.287 splats) y run67 (4.875.097)</p>
+
+<div class="verdict">
+<h3>⚠ Resumen: el prune estaba muerto, y lo que va a podar NO es poca cosa</h3>
+<p>El 2DGS original poda los splats cuya escala supera <code>0.1·extent</code>. En este repo esa poda
+<b>nunca se ejecutó ni una sola vez</b>: <code>get_scaling</code> ya viene recortada a exactamente ese mismo
+valor por el clamp de escala, y el criterio pide <b>estrictamente mayor</b>. Comparábamos el techo contra sí mismo.</p>
+<p>Al medir el ply de run79 con la escala <b>cruda</b> (la que el optimizador realmente quiere):</p>
+<p class="big">76.473 splats = 2.06% de la nube &nbsp;→&nbsp; pero <b>51.3% del área dibujada</b></p>
+<p>Es decir: el prune que vamos a resucitar apunta a <b>una veintésima parte de las primitivas que
+sostienen la mitad de la cobertura geométrica de la escena</b>. Y no son floaters translúcidos del velo:
+son <b>más opacos que la media</b> (0.546 vs 0.529). Son el <b>fondo</b>.</p>
+</div>
+
+<h2>1 · El criterio, y por qué se autoanulaba</h2>
+
+<p>En <code>densify_and_prune</code> (camino clásico) hay tres motivos de poda. El tercero es el del tamaño en mundo:</p>
+
+<pre><code>big_points_vs = self.max_radii2D &gt; max_screen_size            # radio en pantalla (&gt; 20 px)
+big_points_ws = self.get_scaling.max(dim=1).values &gt; 0.1 * extent   # ← ESTE
+prune_mask = prune_mask | big_points_vs | big_points_ws</code></pre>
+
+<p>Y <code>get_scaling</code> no devuelve la escala del parámetro: devuelve la escala <b>ya recortada</b> por el
+clamp que se añadió para que un surfel no pudiera cubrir miles de tiles y reventar el binning del rasterizer:</p>
+
+<pre><code>@property
+def get_scaling(self):
+    s = self.scaling_activation(self._scaling)
+    if self.spatial_lr_scale &gt; 0:
+        s = s.clamp(max=self.scale_clamp_factor * self.spatial_lr_scale)   # factor = 0.1 por defecto
+    return s</code></pre>
+
+<div class="eq">techo del clamp = 0.1 · extent　　　criterio de poda = s &gt; 0.1 · extent　　⇒　　<b>imposible</b></div>
+
+<p>Con el factor por defecto (<code>0.1</code>, la convención 3DGS/2DGS) el techo y el umbral son <b>el mismo número</b>,
+y la comparación es estricta. Ningún valor recortado a <i>x</i> puede ser mayor que <i>x</i>.
+En flowers, con <code>extent = 4.816</code>, los dos valen <b>0.4816</b>.</p>
+
+<div class="note danger-box"><b>La evidencia:</b> el print <code>[DENSIFY]</code> lleva el desglose del prune desde run15.
+En <b>todos</b> los logs del historial clásico —run15, 18, 25, 26, 65, 66, 67, 68–75, 79— el campo sale igual:
+<code>world=0</code>. Nunca se sospechó porque un cero en un contador de poda parece un resultado ("no hay gigantes"),
+no un síntoma ("el criterio no puede dispararse").</p></div>
+
+<h2>2 · Qué hacía ANTES con un splat que quería ser gigante</h2>
+
+<figure>
+<svg viewBox="0 0 960 400" role="img" aria-label="Comparación del recorrido de un splat gigante antes y ahora">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#9aa3b2"/>
+    </marker>
+    <marker id="arR" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#ff7b72"/>
+    </marker>
+  </defs>
+
+  <!-- ANTES -->
+  <rect x="12" y="10" width="460" height="380" rx="12" fill="#171a23" stroke="#2a2f3c"/>
+  <text x="242" y="38" text-anchor="middle" fill="#ff7b72" font-size="16" font-weight="700">ANTES (todo el historial)</text>
+  <text x="242" y="58" text-anchor="middle" fill="#9aa3b2" font-size="12">el criterio mira la escala YA RECORTADA</text>
+
+  <text x="40" y="90" fill="#e6e8ee" font-size="13">el optimizador pide</text>
+  <rect x="40" y="100" width="180" height="26" rx="6" fill="#0b0d13" stroke="#2a2f3c"/>
+  <text x="130" y="118" text-anchor="middle" fill="#ffb454" font-size="13" font-family="monospace">s_raw = 3.21</text>
+  <line x1="130" y1="130" x2="130" y2="158" stroke="#9aa3b2" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="40" y="160" width="180" height="26" rx="6" fill="#0b0d13" stroke="#6ea8fe"/>
+  <text x="130" y="178" text-anchor="middle" fill="#6ea8fe" font-size="12" font-family="monospace">clamp → 0.4816</text>
+  <line x1="130" y1="190" x2="130" y2="218" stroke="#9aa3b2" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="30" y="220" width="200" height="52" rx="6" fill="#0b0d13" stroke="#2a2f3c"/>
+  <text x="130" y="240" text-anchor="middle" fill="#c9d1d9" font-size="11" font-family="monospace">0.4816 &gt; 0.4816 ?</text>
+  <text x="130" y="260" text-anchor="middle" fill="#ff7b72" font-size="13" font-weight="700">FALSE — nunca</text>
+
+  <line x1="130" y1="274" x2="130" y2="302" stroke="#9aa3b2" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="34" y="304" width="192" height="30" rx="6" fill="#241b1b" stroke="#a33"/>
+  <text x="130" y="324" text-anchor="middle" fill="#ff7b72" font-size="12" font-weight="600">SOBREVIVE para siempre</text>
+
+  <!-- dibujo del surfel antes -->
+  <text x="350" y="90" text-anchor="middle" fill="#9aa3b2" font-size="12">lo que se DIBUJA</text>
+  <circle cx="350" cy="175" r="62" fill="#6ea8fe" fill-opacity="0.22" stroke="#6ea8fe" stroke-dasharray="4 3"/>
+  <circle cx="350" cy="175" r="62" fill="none" stroke="#6ea8fe" stroke-width="2"/>
+  <text x="350" y="180" text-anchor="middle" fill="#6ea8fe" font-size="11" font-family="monospace">tope 0.48</text>
+  <circle cx="350" cy="175" r="96" fill="none" stroke="#ffb454" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="350" y="290" text-anchor="middle" fill="#ffb454" font-size="11">lo que PIDE (recortado)</text>
+  <text x="350" y="330" text-anchor="middle" fill="#9aa3b2" font-size="11">nadie lo poda ⇒ ocupa un</text>
+  <text x="350" y="346" text-anchor="middle" fill="#9aa3b2" font-size="11">slot del presupuesto 30k iters</text>
+
+  <!-- AHORA -->
+  <rect x="488" y="10" width="460" height="380" rx="12" fill="#171a23" stroke="#2a2f3c"/>
+  <text x="718" y="38" text-anchor="middle" fill="#7ee787" font-size="16" font-weight="700">AHORA (run80, escala cruda)</text>
+  <text x="718" y="58" text-anchor="middle" fill="#9aa3b2" font-size="12">el criterio mira la escala QUE PIDE</text>
+
+  <text x="516" y="90" fill="#e6e8ee" font-size="13">el optimizador pide</text>
+  <rect x="516" y="100" width="180" height="26" rx="6" fill="#0b0d13" stroke="#2a2f3c"/>
+  <text x="606" y="118" text-anchor="middle" fill="#ffb454" font-size="13" font-family="monospace">s_raw = 3.21</text>
+  <line x1="606" y1="130" x2="606" y2="218" stroke="#ff7b72" stroke-width="1.5" marker-end="url(#arR)"/>
+  <text x="616" y="175" fill="#9aa3b2" font-size="11">sin pasar por el clamp</text>
+
+  <rect x="506" y="220" width="200" height="52" rx="6" fill="#0b0d13" stroke="#2a2f3c"/>
+  <text x="606" y="240" text-anchor="middle" fill="#c9d1d9" font-size="11" font-family="monospace">3.21 &gt; 0.4816 ?</text>
+  <text x="606" y="260" text-anchor="middle" fill="#7ee787" font-size="13" font-weight="700">TRUE — se poda</text>
+
+  <line x1="606" y1="274" x2="606" y2="302" stroke="#9aa3b2" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="510" y="304" width="192" height="30" rx="6" fill="#16241b" stroke="#2c5"/>
+  <text x="606" y="324" text-anchor="middle" fill="#7ee787" font-size="12" font-weight="600">ELIMINADO en el acto</text>
+
+  <text x="826" y="90" text-anchor="middle" fill="#9aa3b2" font-size="12">y su hueco…</text>
+  <circle cx="826" cy="175" r="62" fill="none" stroke="#3a3f4c" stroke-width="2" stroke-dasharray="4 4"/>
+  <circle cx="806" cy="160" r="15" fill="#7ee787" fill-opacity="0.3" stroke="#7ee787"/>
+  <circle cx="846" cy="186" r="13" fill="#7ee787" fill-opacity="0.3" stroke="#7ee787"/>
+  <circle cx="812" cy="196" r="11" fill="#7ee787" fill-opacity="0.3" stroke="#7ee787"/>
+  <text x="826" y="290" text-anchor="middle" fill="#7ee787" font-size="11">clone/split debe recubrirlo</text>
+  <text x="826" y="330" text-anchor="middle" fill="#ffb454" font-size="11">…si le da el presupuesto</text>
+  <text x="826" y="346" text-anchor="middle" fill="#ffb454" font-size="11">(ver sección 5)</text>
+</svg>
+<figcaption>El clamp no cambia lo que el optimizador <i>pide</i>: solo lo que se <i>dibuja</i>. El criterio antiguo miraba el lado equivocado.</figcaption>
+</figure>
+
+<p>Conviene subrayar la diferencia con el 2DGS original, porque explica por qué el bug pasó desapercibido:
+<b>el original no tiene clamp de escala</b>. Allí un surfel que crece sin control crece de verdad, el criterio
+lo ve y lo mata. Aquí el clamp lo hace invisible al criterio y lo deja vivir indefinidamente,
+<b>recortado pero presente</b>: sigue ocupando un slot, sigue recibiendo gradiente, sigue pintando su disco de
+0.4816 y sigue siendo elegible para clone/split.</p>
+
+<table>
+<thead><tr><th></th><th>2DGS original</th><th>Este repo (antes)</th><th>Este repo (run80)</th></tr></thead>
+<tbody>
+<tr><td>Escala que se dibuja</td><td>la que pide (sin límite)</td><td>recortada a 0.1·extent</td><td>recortada a 0.1·extent</td></tr>
+<tr><td>Escala que evalúa el prune</td><td>la que pide</td><td class="bad">la recortada ⇒ nunca dispara</td><td class="ok">la que pide</td></tr>
+<tr><td>Destino del gigante</td><td>podado</td><td class="bad">vive los 30k iters</td><td class="ok">podado</td></tr>
+<tr><td>Riesgo de OOM del binning</td><td>real (motivo del clamp)</td><td>cubierto por el clamp</td><td>cubierto por el clamp</td></tr>
+</tbody>
+</table>
+
+<h2>2b · Nota: el clamp de escala se queda — no es lo mismo que el prune</h2>
+<p>Son dos mecanismos con objetivos distintos y run80 solo toca uno:</p>
+<ul>
+<li><b>El clamp</b> es una <i>protección de render</i>: impide que la huella de un surfel desborde el buffer de binning
+(el OOM fantasma de "1050571 GiB"). Se mantiene intacto.</li>
+<li><b>El prune</b> es una <i>decisión de modelo</i>: un surfel que necesita ser mayor que el 10% de la escena está
+mal planteado y conviene reemplazarlo por varios pequeños. Es lo que estaba muerto.</li>
+</ul>
+<p>Dicho de otro modo: hasta ahora el clamp estaba haciendo <b>de las dos cosas a la vez y mal</b> — tapaba el
+síntoma (la huella enorme) mientras desactivaba sin querer al mecanismo que debía resolver la causa.</p>
+
+<h2>3 · Quiénes son esos gigantes (medido en el ply de run79)</h2>
+
+<p>El ply guarda la escala <b>cruda</b> (el clamp no se serializa), así que se puede medir exactamente
+a quién apunta el criterio. Umbral: <code>0.1 · 4.816 = 0.4816</code>.</p>
+
+<figure>
+<svg viewBox="0 0 960 330" role="img" aria-label="Histograma de la escala máxima cruda por splat">
+  <text x="480" y="22" text-anchor="middle" fill="#e6e8ee" font-size="14" font-weight="700">Distribución de s_max CRUDA por splat — run79 (3.716.287 splats)</text>
+  <line x1="60" y1="280" x2="920" y2="280" stroke="#2a2f3c"/>
+  <line x1="60" y1="60" x2="60" y2="280" stroke="#2a2f3c"/>
+  <text x="30" y="86" fill="#9aa3b2" font-size="10">20%</text>
+  <text x="30" y="186" fill="#9aa3b2" font-size="10">10%</text>
+  <text x="38" y="283" fill="#9aa3b2" font-size="10">0</text>
+  <line x1="60" y1="82" x2="920" y2="82" stroke="#2a2f3c" stroke-dasharray="2 4"/>
+  <line x1="60" y1="181" x2="920" y2="181" stroke="#2a2f3c" stroke-dasharray="2 4"/>
+
+  <!-- barras: 16 bins log, ancho 53.75 -->
+  <g fill="#6ea8fe" fill-opacity="0.75">
+    <rect x="61" y="276.6" width="51" height="3.4"/>
+    <rect x="114.8" y="266.4" width="51" height="13.6"/>
+    <rect x="168.5" y="251.1" width="51" height="28.9"/>
+    <rect x="222.3" y="229.7" width="51" height="50.3"/>
+    <rect x="276" y="192.2" width="51" height="87.8"/>
+    <rect x="329.8" y="129.4" width="51" height="150.6"/>
+    <rect x="383.5" y="81.5" width="51" height="198.5"/>
+    <rect x="437.3" y="105.7" width="51" height="174.3"/>
+    <rect x="491" y="165.4" width="51" height="114.6"/>
+    <rect x="544.8" y="211.5" width="51" height="68.5"/>
+    <rect x="598.5" y="238.9" width="51" height="41.1"/>
+    <rect x="652.3" y="254.8" width="51" height="25.2"/>
+    <rect x="706" y="264.4" width="51" height="15.6"/>
+  </g>
+  <!-- bins del techo en naranja/rojo -->
+  <rect x="759.8" y="259.7" width="51" height="20.3" fill="#ffb454" fill-opacity="0.85"/>
+  <rect x="813.5" y="273.5" width="51" height="6.5" fill="#ff7b72" fill-opacity="0.85"/>
+  <rect x="867.3" y="279.8" width="51" height="0.2" fill="#ff7b72" fill-opacity="0.85"/>
+
+  <!-- linea del techo dentro del bin 13 -->
+  <line x1="806" y1="52" x2="806" y2="288" stroke="#7ee787" stroke-width="2"/>
+  <text x="806" y="46" text-anchor="middle" fill="#7ee787" font-size="12" font-weight="700">techo 0.4816</text>
+  <text x="880" y="120" text-anchor="middle" fill="#ff7b72" font-size="11">GIGANTES</text>
+  <text x="880" y="136" text-anchor="middle" fill="#ff7b72" font-size="11">2.06%</text>
+  <line x1="880" y1="144" x2="880" y2="270" stroke="#ff7b72" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- flecha al pico anomalo -->
+  <text x="700" y="215" text-anchor="end" fill="#ffb454" font-size="11">el histograma REPUNTA</text>
+  <text x="700" y="230" text-anchor="end" fill="#ffb454" font-size="11">justo antes del techo →</text>
+
+  <g fill="#9aa3b2" font-size="9.5" text-anchor="middle">
+    <text x="86" y="296">0.004</text>
+    <text x="194" y="296">0.008</text>
+    <text x="302" y="296">0.016</text>
+    <text x="409" y="296">0.032</text>
+    <text x="517" y="296">0.063</text>
+    <text x="624" y="296">0.126</text>
+    <text x="732" y="296">0.252</text>
+    <text x="893" y="296">0.71</text>
+  </g>
+  <text x="480" y="318" text-anchor="middle" fill="#9aa3b2" font-size="11">escala máxima por splat (unidades de mundo, eje logarítmico)</text>
+</svg>
+<figcaption>La campana muere en ~0.25… y entonces <b>repunta</b> (1.57% → 2.03%) en el bin que contiene el techo. Ese repunte es la firma de un clamp que sí muerde: el optimizador empuja y algo lo detiene ahí.</figcaption>
+</figure>
+
+<p>Compárese con lo que vimos al auditar el <b>techo de β</b> (<code>techo_beta_clamp_superior.html</code>): allí la
+distribución <b>moría sola</b> muy por debajo del límite (p99.9 = 37% del tope, 1 splat de 4,8M topado) y por eso
+tocar el clamp era un NO-OP. Aquí ocurre lo contrario: <b>hay apilamiento contra el límite</b>. Es la misma regla del
+proyecto —mirar el histograma, no el máximo— dando esta vez el resultado opuesto.</p>
+
+<h3>Y no son floaters: son fondo opaco</h3>
+
+<table>
+<thead><tr><th>Medida (run79, ply @30k)</th><th>Gigantes (s_raw &gt; 0.4816)</th><th>El resto</th><th>Lectura</th></tr></thead>
+<tbody>
+<tr><td>Nº de splats</td><td><b>76.473</b> (2.058%)</td><td>3.639.814</td><td>una minoría diminuta…</td></tr>
+<tr><td>Área que dibujan</td><td class="bad"><b>51.3%</b> del total</td><td>48.7%</td><td>…que sostiene <b>media escena</b></td></tr>
+<tr><td>Opacidad media</td><td><b>0.546</b></td><td>0.529</td><td>más opacos que la media</td></tr>
+<tr><td>% con op &gt; 0.5</td><td><b>51.9%</b></td><td>50.1%</td><td><b>no son el velo translúcido</b></td></tr>
+<tr><td>% con op &lt; 0.1</td><td>16.2%</td><td>21.9%</td><td>menos moribundos que la media</td></tr>
+<tr><td>β medio</td><td><b>1.69</b></td><td>2.53</td><td>kernel más plano = cobertura uniforme</td></tr>
+<tr><td>Escala media pedida</td><td>0.502 (mediana; máx 3.21)</td><td>—</td><td>la mayoría roza el techo, no lo revienta</td></tr>
+</tbody>
+</table>
+
+<div class="note warn-box"><b>El perfil es inequívoco:</b> surfels grandes, opacos y de β bajo (kernel ancho y liso).
+Eso es <b>el fondo rasante</b> —césped, cielo, pared— cubierto con pocas piezas grandes, exactamente el mecanismo que
+run21 identificó cuando vio <code>s(max)</code> clavado en <code>extent</code>. <b>No</b> es la firma de un floater
+(que sería <code>op</code> baja y β alta).</div>
+
+<figure>
+<svg viewBox="0 0 960 190" role="img" aria-label="2 por ciento de los splats aporta 51 por ciento del area">
+  <text x="480" y="24" text-anchor="middle" fill="#e6e8ee" font-size="14" font-weight="700">El desequilibrio: pocas primitivas, media cobertura</text>
+  <text x="60" y="60" fill="#9aa3b2" font-size="12">nº de splats</text>
+  <rect x="200" y="44" width="700" height="30" rx="4" fill="#1e222e" stroke="#2a2f3c"/>
+  <rect x="200" y="44" width="14.4" height="30" rx="4" fill="#ff7b72"/>
+  <text x="222" y="64" fill="#ff7b72" font-size="12" font-weight="700">2.06%</text>
+  <text x="880" y="64" text-anchor="end" fill="#9aa3b2" font-size="11">97.94% restante</text>
+
+  <text x="60" y="122" fill="#9aa3b2" font-size="12">área dibujada</text>
+  <rect x="200" y="106" width="700" height="30" rx="4" fill="#1e222e" stroke="#2a2f3c"/>
+  <rect x="200" y="106" width="359" height="30" rx="4" fill="#ff7b72" fill-opacity="0.85"/>
+  <text x="380" y="126" text-anchor="middle" fill="#0f1117" font-size="13" font-weight="700">51.3%</text>
+  <text x="880" y="126" text-anchor="end" fill="#9aa3b2" font-size="11">48.7%</text>
+
+  <text x="480" y="168" text-anchor="middle" fill="#ffb454" font-size="12">un gigante cubre <b>234×</b> el área de un surfel mediano</text>
+</svg>
+<figcaption>Área = π·s₁·s₂ con las escalas ya recortadas (lo que de verdad se pinta). Es cobertura geométrica, no contribución al píxel: hay solape y oclusión.</figcaption>
+</figure>
+
+<h2>4 · Qué hará AHORA, paso a paso</h2>
+
+<p>El flag <code>--classic_prune_world_raw</code> cambia una línea: qué escala entra en el criterio.</p>
+
+<pre><code>if prune_world_raw:
+    world_scale = self.scaling_activation(self._scaling).max(dim=1).values   # CRUDA (2DGS original)
+else:
+    world_scale = self.get_scaling.max(dim=1).values                         # clampada (histórico)
+big_points_ws = world_scale &gt; 0.1 * extent</code></pre>
+
+<p>Con eso, durante el entrenamiento de run80:</p>
+
+<ul>
+<li><b>Cuándo actúa:</b> solo cuando <code>size_threshold</code> está activo, es decir <b>a partir del primer
+<code>opacity_reset</code></b> (iter 3000), y en cada paso de densificación (cada 100 iters) hasta
+<code>densify_until_iter</code> = 15000. Son <b>~120 oportunidades</b> de poda.</li>
+<li><b>Qué elimina:</b> todo splat cuya escala <i>deseada</i> pase de 0.4816, se dibuje como se dibuje.</li>
+<li><b>Qué NO cambia:</b> el clamp sigue puesto (protección del binning), el prune por opacidad y por radio en
+pantalla siguen igual, y la densificación clona/parte como siempre.</li>
+<li><b>El bucle que se abre:</b> el fondo pierde sus piezas grandes → sube el error de reconstrucción ahí →
+el gradiente de posición dispara clone/split en esa zona → se rellena con surfels pequeños… que <b>tampoco</b>
+podrán crecer más allá del techo sin ser podados. Es el mecanismo del 2DGS original: <b>obliga a representar
+el fondo con muchas piezas pequeñas en vez de pocas grandes</b>.</li>
+</ul>
+
+<h2>5 · Qué esperar — y cómo distinguir los dos desenlaces</h2>
+
+<p>Este es un experimento con dos salidas plausibles y opuestas. El coste de recubrir lo que se poda no es
+menor: el área de los gigantes, repartida en surfels de tamaño mediano, exigiría del orden de
+<b>~18 millones de splats</b>, cuando la nube entera de run79 tiene <b>3,7 M</b>. No hace falta llegar ahí
+(los sustitutos serán mayores que la mediana y la densificación reequilibra sobre la marcha), pero da la escala
+de la tensión.</p>
+
+<div class="grid2">
+<div class="card">
+<p><span class="tag ok">Desenlace A</span> <b>El prune limpia</b></p>
+<p>Los gigantes eran una muleta: superficies planas enormes que casaban las vistas de train y se rompían en test.
+Sustituirlos por piezas pequeñas mejora la geometría del fondo.</p>
+<ul>
+<li>PSNR/SSIM <b>suben</b> sobre run79</li>
+<li><code>dmean(render−gt)</code> se acerca a <b>0</b> desde −0.8156</li>
+<li>N final <b>sube</b> (más piezas pequeñas)</li>
+<li>gap train−test <b>baja</b> de 2.59</li>
+</ul>
+</div>
+<div class="card">
+<p><span class="tag bad">Desenlace B</span> <b>El prune abre huecos</b></p>
+<p>Los gigantes eran la única forma barata de cubrir el fondo rasante. Sin ellos y sin presupuesto para
+recubrirlo, aparecen agujeros — el modo de fallo clásico de este camino.</p>
+<ul>
+<li>PSNR/SSIM <b>bajan</b>; LPIPS sube</li>
+<li><code>dmean</code> se hace <b>más negativo</b> que −0.8156 <span class="meta">(indicador temprano)</span></li>
+<li>train PSNR baja de 23.40 = ni ajusta el train</li>
+<li>vistas de fondo visiblemente más oscuras</li>
+</ul>
+</div>
+</div>
+
+<div class="note"><b>El indicador que decide antes que <code>metrics.py</code>:</b> <code>dmean(render−gt)</code>.
+El clásico ya está sub-brillante (run67 −1.2524; run79 −0.8156 tras el fix de transmitancia). Si run80 vuelve
+hacia −1.2 o peor, es el desenlace B y el fix habrá que dejarlo en OFF (o subir el <code>scale_clamp_factor</code>
+para que el criterio sea menos agresivo que el techo, en vez de igual).</div>
+
+<h3>Verificación de que el fix está vivo (lo primero que hay que mirar)</h3>
+<pre><code>grep "PRUNE-WORLD" logs/flowers80.log | head -3
+# esperado: «escala usada = CRUDA (2DGS original) -&gt; ACTIVO, poda N»  con N &gt; 0
+
+grep -o "world=[0-9]*" logs/flowers80.log | sort -u | head
+# histórico: world=0 SIEMPRE · run80: debe aparecer world&gt;0</code></pre>
+<p class="meta">Smoke test local previo (bonsai, 600 it): <code>world=54</code> y <code>world=69</code> donde antes
+salía 0 — el criterio dispara. En flowers la masa candidata medida a iter 14.9k era de 52.211 splats (1.404%);
+al final del entrenamiento el ply de run79 tiene 76.473 (2.058%), porque entre 15k y 30k ya no hay poda y siguen creciendo.</p>
+
+<h2>6 · Por qué esto se descubrió ahora</h2>
+<p>El bug es del tipo más difícil de ver: <b>dos piezas correctas por separado</b> —un clamp defensivo y un criterio
+heredado del 2DGS— que al juntarse se anulan. No hay excepción, ni NaN, ni una métrica que se desplome; solo un
+contador que marca <code>0</code> y parece decir "aquí no hay nada que podar".</p>
+<p>Salió al auditar el código de β de punta a punta (agosto 2026), en la misma pasada que encontró que
+<code>clone</code>/<code>split</code> no conservaban la transmitancia (run79) y que el print del techo de β medía
+contra un umbral inexistente. El patrón común de los tres: <b>código que parecía estar haciendo algo y no hacía
+nada</b>, y en los tres casos lo que lo delató fue <b>medir cuánta masa toca de verdad</b>, no leer la lógica.</p>
+
+<div class="note ok-box"><b>Regla que consolida:</b> cuando un mecanismo de poda o un clamp reporta <code>0</code>
+de forma sostenida, hay que distinguir <b>"no hay candidatos"</b> de <b>"el criterio no puede dispararse"</b>.
+Se distingue calculando el criterio <i>por la vía alternativa</i> —aquí, con la escala cruda— y comparando.
+Eso es exactamente lo que hace ahora el print <code>[PRUNE-WORLD]</code>, que imprime <b>las dos cuentas a la vez</b>.</div>
+
+<p class="meta" style="margin-top:2.5em">Docs relacionados: <code>clamp_escala_gigantes_fondo.html</code> ·
+<code>clamp_radio_y_techo_rasterizer.html</code> · <code>techo_beta_clamp_superior.html</code> (el caso contrario:
+un clamp que NO muerde) · <code>clone_split_logica_huecos.html</code> · <code>comparativa_runs.html</code>.</p>
+
+</div>
+</body>
+</html>
