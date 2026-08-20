@@ -439,11 +439,23 @@ renderCUDA(
 			// historial (flowers/bonsai usan white_background=False). Con fondo BLANCO
 			// el gradiente de beta salia con el SIGNO INVERTIDO (verificado contra
 			// diferencias finitas: analitico -4.76e-04 vs verdadero +1.42e-04).
-			// FIX #2 (run9): el umbral beta<0.1 solo debe saltar el gradiente de BETA
-			// (para evitar NaN), NO la geometría/opacidad. Antes el `continue`
-			// saltaba TODO el resto del cuerpo del bucle -> congelaba posición/
-			// escala/rotación/opacidad de esos splats (ver doc backward_*).
-			if (beta_j >= 0.1f) {
+			// FIX #2 (run9): el umbral beta<0.1 solo saltaba el gradiente de BETA (para
+			// evitar NaN), NO la geometría/opacidad. Antes el `continue` saltaba TODO el
+			// resto del cuerpo del bucle -> congelaba posición/escala/rotación/opacidad
+			// de esos splats (ver doc backward_*).
+			//
+			// FIX 2026-08-20 (pozo absorbente): ese umbral se ELIMINA. Era un estado del
+			// que no se podía salir — un splat que bajaba de beta=0.1 dejaba de recibir
+			// gradiente en beta PARA SIEMPRE y ya no podía subir (solo un relocate podía
+			// rescatarlo). Y el motivo original (NaN) no se sostiene: la derivada es
+			//     d_alpha_d_beta = alpha * log(1 - rho)
+			// donde `one_minus` está acotado por abajo por max(1-r2, 1e-6) => el log vale
+			// como mucho -13.8, y alpha <= 0.99. No hay singularidad para beta pequeña
+			// (de hecho beta->0 hace kernel->1, el caso MÁS benigno). El clamp de
+			// grad_beta a +-1e-3 que sigue justo debajo ya cubre cualquier pico.
+			// Masa afectada: 0.083% de los splats en run79, 0.282% en run80 (donde al
+			// cerrarles la vía de crecer en escala, más splats bajan beta y caían aquí).
+			{
 				// ∂α/∂beta = α * log(1 - rho)
 				float d_alpha_d_beta = alpha * logf(one_minus);
 				float grad_beta = dL_dalpha * d_alpha_d_beta;

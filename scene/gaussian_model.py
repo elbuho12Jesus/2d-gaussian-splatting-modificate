@@ -360,7 +360,22 @@ class GaussianModel:
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
 
-    def load_ply(self, path):
+    def load_ply(self, path, spatial_lr_scale=None):
+        # spatial_lr_scale: al cargar un ply para RENDER, `self.spatial_lr_scale` se queda
+        # en 0 (valor de __init__) -> el guard de `get_scaling` desactiva el clamp de escala
+        # ⇒ render/metrics dibujan los surfels con su escala CRUDA mientras el entrenamiento
+        # los dibujaba RECORTADOS a 0.1*extent. En run79 eso son splats hasta 6.7x mas
+        # grandes al renderizar que al entrenar (los "haces de luz" de run64). Pasando el
+        # extent aqui, render y train ven lo MISMO.
+        # OPT-IN por env var RENDER_CLAMP_SCALE=1: activarlo por defecto cambiaria las
+        # metricas honestas de TODO el historial y rompería la comparabilidad; asi se puede
+        # medir el efecto (mismo ply, con y sin clamp) antes de decidir.
+        if spatial_lr_scale is not None and os.environ.get("RENDER_CLAMP_SCALE", "0") == "1":
+            self.spatial_lr_scale = float(spatial_lr_scale)
+            print("[LOAD] RENDER_CLAMP_SCALE=1 -> clamp de escala ACTIVO en render: "
+                  "extent={:.4f}, techo={:.6f} (por defecto el clamp esta INACTIVO al cargar "
+                  "un ply y se dibuja la escala CRUDA)".format(
+                      self.spatial_lr_scale, self.scale_clamp_factor * self.spatial_lr_scale))
         plydata = PlyData.read(path)
 
         xyz = np.stack((np.asarray(plydata.elements[0]["x"]),

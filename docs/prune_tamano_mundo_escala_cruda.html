@@ -48,8 +48,26 @@
 Doc de acompañamiento del run que está corriendo.</p>
 <p class="meta">2026-08-19 · flowers, camino CLÁSICO · datos: <code>logs/flowers79.log</code> + <code>point_cloud.ply</code> de run79 (3.716.287 splats) y run67 (4.875.097)</p>
 
+<div class="verdict" style="border-left-color:var(--accent2)">
+<h3 style="color:var(--accent2)">✅ DESENLACE (run80, medido) — ni A ni B: NEUTRO. Y eso es informativo</h3>
+<p>El run ya está: <b>20.7488 / 0.5747 / 0.3736</b> honesto, contra el ancla run79 <b>20.7385 / 0.5767 / 0.3726</b>
+→ PSNR +0.010, SSIM −0.0019, LPIPS +0.0010. <b>Las tres dentro del ruido.</b></p>
+<p>Y no por falta de efecto: el fix podó <b>164.454 splats</b>, la escala máxima pedida cayó de
+<b>3.2149 a 0.5786</b>, los topados del clamp bajaron de 1.344% a 0.538% y el recorte máximo de
+<b>2.73 a 0.097</b>. <b>Pero el nº final de splats es el mismo (3,72 M) y la calidad también.</b></p>
+<p class="big" style="color:var(--accent2)">La escena no necesitaba los gigantes</p>
+<p>Le quitas el 2% de primitivas que sostenía la mitad del área dibujada, y <b>se reorganiza con la misma masa
+hasta llegar exactamente al mismo sitio</b>. Eso <b>refuta la hipótesis implícita de run21</b> (que los surfels
+gigantes topados eran el problema del fondo) y <b>agota la familia entera "tamaño de los surfels del fondo"</b>
+como palanca: <code>scale_reg</code> (9 fallos), bajar el clamp (run64) y podar los gigantes (run80) son tres
+ataques independientes al mismo objeto, con tres resultados nulos.</p>
+<p class="meta">Lo que sigue es el análisis previo al run, que se mantiene porque explica el mecanismo y porque
+la predicción de riesgo (sección 5) es justo la que el resultado matiza. Lectura completa del desenlace en la
+sección 7, al final.</p>
+</div>
+
 <div class="verdict">
-<h3>⚠ Resumen: el prune estaba muerto, y lo que va a podar NO es poca cosa</h3>
+<h3>⚠ Análisis previo: el prune estaba muerto, y lo que va a podar NO es poca cosa</h3>
 <p>El 2DGS original poda los splats cuya escala supera <code>0.1·extent</code>. En este repo esa poda
 <b>nunca se ejecutó ni una sola vez</b>: <code>get_scaling</code> ya viene recortada a exactamente ese mismo
 valor por el clamp de escala, y el criterio pide <b>estrictamente mayor</b>. Comparábamos el techo contra sí mismo.</p>
@@ -386,6 +404,48 @@ nada</b>, y en los tres casos lo que lo delató fue <b>medir cuánta masa toca d
 de forma sostenida, hay que distinguir <b>"no hay candidatos"</b> de <b>"el criterio no puede dispararse"</b>.
 Se distingue calculando el criterio <i>por la vía alternativa</i> —aquí, con la escala cruda— y comparando.
 Eso es exactamente lo que hace ahora el print <code>[PRUNE-WORLD]</code>, que imprime <b>las dos cuentas a la vez</b>.</div>
+
+<h2>7 · Desenlace medido (run80)</h2>
+
+<table>
+<thead><tr><th>Medida</th><th>run79 (ancla)</th><th>run80 (fix)</th><th>Lectura</th></tr></thead>
+<tbody>
+<tr><td>PSNR / SSIM / LPIPS</td><td>20.7385 / 0.5767 / 0.3726</td><td>20.7488 / 0.5747 / 0.3736</td><td class="warn">las 3 en el ruido</td></tr>
+<tr><td>Splats finales</td><td>3.716.287</td><td>3.721.522</td><td>idéntico</td></tr>
+<tr><td>Splats podados por el criterio</td><td>0 (nunca disparó)</td><td class="ok"><b>164.454</b></td><td>el fix muerde</td></tr>
+<tr><td><code>s_raw max</code></td><td>3.2149</td><td class="ok"><b>0.5786</b></td><td>desaparece la cola de monstruos</td></tr>
+<tr><td>Topados del clamp</td><td>1.344%</td><td class="ok">0.538%</td><td>el clamp casi deja de actuar</td></tr>
+<tr><td><code>recorte_max</code></td><td>2.7333</td><td class="ok">0.0970</td><td>ya no hay nada que recortar</td></tr>
+<tr><td><code>dmean(render−gt)</code></td><td>−0.8156</td><td>−0.6711</td><td>menos déficit… pero ver abajo</td></tr>
+<tr><td>Dispersión entre vistas</td><td>min −5.38 / max +1.41</td><td class="bad">min −6.19 / max +2.86</td><td><b>redistribuye</b>, no mejora</td></tr>
+<tr><td>β &lt; 0.1</td><td>0.083%</td><td>0.282%</td><td>compensación vía β (ver abajo)</td></tr>
+</tbody>
+</table>
+
+<h3>Tres lecturas</h3>
+<ul>
+<li><b>El retrato de los gigantes era correcto, la teoría sobre ellos no.</b> Sí eran fondo opaco y sí sostenían
+media escena — pero eran <b>reemplazables</b>. La densificación los sustituye por piezas menores sin coste ni
+ganancia. El miedo del desenlace B (huecos negros por falta de presupuesto) <b>no se materializó</b>: el sistema
+se reequilibra dentro del mismo número de primitivas.</li>
+<li><b>El <code>dmean</code> mejora pero la dispersión empeora.</b> El déficit medio de luz baja
+(−0.82 → −0.67), pero la vista más oscura se oscurece más (−5.38 → −6.19) y la más brillante se pasa más
+(+1.41 → +2.86): unas vistas ganan lo que otras pierden. Es <b>exactamente el patrón de run18</b>
+(redistribución de un presupuesto fijo, neto nulo en la media).</li>
+<li><b>Compensación por β.</b> Al cerrarles la vía de crecer en escala, una parte de los splats <b>baja β</b>
+para ensanchar el kernel: β&lt;0.1 se triplica (0.083% → 0.282%) y <code>beta max</code> vuelve a topar en
+29.5562. Es la misma vía de compensación que run65 postulaba (y que el barrido run68–71 había descartado para
+<code>scale_reg</code>); aquí sí aparece, aunque en una fracción pequeña de la nube. Nota: esos splats caen en el
+<b>pozo absorbente</b> del gate <code>β&lt;0.1</code> del backward — una vez dentro, ya no reciben gradiente en β
+y no pueden salir.</li>
+</ul>
+
+<div class="note ok-box"><b>Se queda por corrección, no por métrica.</b> El fix alinea el criterio con el 2DGS
+original y, de regalo, <b>elimina de facto la inconsistencia train↔render del clamp</b>: como <code>load_ply</code>
+no restaura <code>spatial_lr_scale</code>, en render/metrics el clamp está <b>inactivo</b>, así que en run79 había
+splats que se dibujaban <b>6.7× más grandes</b> al renderizar que durante el entrenamiento (los "haces de luz" de
+run64). En run80 el recorte máximo es 0.097: no queda casi nada que recortar, así que ese artefacto se apaga solo.
+<b>Eso no lo capta la métrica promediada sobre 22 vistas — se ve en el vídeo</b> (misma lección que run56).</div>
 
 <p class="meta" style="margin-top:2.5em">Docs relacionados: <code>clamp_escala_gigantes_fondo.html</code> ·
 <code>clamp_radio_y_techo_rasterizer.html</code> · <code>techo_beta_clamp_superior.html</code> (el caso contrario:
