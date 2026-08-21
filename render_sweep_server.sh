@@ -34,9 +34,10 @@ DATASETS=(
     "mipnerf360/stump"
     "mipnerf360/treehill"
     "tandt/truck"
+    "tandt/train"
 )
 
-RUNS=(81 82 83 84 85 86 87 88 89 90)
+RUNS=(81 82 83 84 85 86 87 88 89 90 91)
 
 ITER=30000        # iteración (checkpoint) a renderizar
 RENDER_TRAJ=1     # 1 = genera también el vídeo de trayectoria (paso 1).

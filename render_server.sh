@@ -2,8 +2,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Deben coincidir con train_server.sh.
-DATASET=flowers          # carpeta en Datasets/
-RUN=80                    # run80 = CLÁSICO, ancla run79 + UN DELTA: --classic_prune_world_raw
+DATASET="tandt/train"          # carpeta en Datasets/
+RUN=91                    # run80 = CLÁSICO, ancla run79 + UN DELTA: --classic_prune_world_raw
                           # (el prune por tamaño-mundo vuelve a morder: escala CRUDA, como el 2DGS original)
 ITER=30000               # iteración (checkpoint) a renderizar (el test pica ~30k)
 

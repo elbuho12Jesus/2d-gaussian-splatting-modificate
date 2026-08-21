@@ -24,9 +24,10 @@ DATASETS=(
     "mipnerf360/stump" 
     "mipnerf360/treehill"
     "tandt/truck"
+    "tandt/train"
 )
 
-RUNS=(81 82 83 84 85 86 87 88 89 90)
+RUNS=(81 82 83 84 85 86 87 88 89 90 91)
 
 export SCALE_CLAMP_FACTOR=0.1
 PRUNE_SUSTAIN=25

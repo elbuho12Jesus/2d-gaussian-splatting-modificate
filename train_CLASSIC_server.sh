@@ -22,8 +22,8 @@ export DEBUG_DENSIFY=1   # imprime [DENSIFY]/[RESET] (default ON; =0 silencia)
 # render_server.sh + metrics.py + fila al historial y a docs/comparativa_runs.html.
 # ───────────────────────────────────────────────────────────────────────────
 # ÚNICO bloque a editar entre runs. Todo lo demás (source, model, log) se deriva.
-DATASET=flowers               # carpeta en Datasets/ (flowers, bonsai, garden…)
-RUN=80                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
+DATASET="tandt/train"               # carpeta en Datasets/ (flowers, bonsai, garden…)
+RUN=91                        # nº de run → output/m360/${DATASET}_beta_run${RUN}
 # ═══════════════════════════════════════════════════════════════════════════
 # run80 = ANCLA run79 + UN SOLO DELTA: --classic_prune_world_raw
 # ═══════════════════════════════════════════════════════════════════════════
